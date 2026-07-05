@@ -1,0 +1,136 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+
+import '../models/models.dart';
+import '../providers/app_state.dart';
+import '../widgets/common.dart';
+
+class StudentProfileScreen extends ConsumerWidget {
+  const StudentProfileScreen({required this.studentId, super.key});
+
+  final String studentId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(appControllerProvider);
+    final controller = ref.read(appControllerProvider.notifier);
+    final student = state.students.firstWhere((item) => item.id == studentId);
+    final guardian = state.guardians.firstWhere((item) => item.id == student.guardianId);
+    final summary = controller.financeFor(student.id);
+    final demands = state.feeDemands.where((item) => item.studentId == student.id).toList();
+    final concessions = state.concessions.where((item) => item.studentId == student.id).toList();
+    final payments = state.payments.where((item) => item.studentId == student.id).toList();
+    final width = MediaQuery.of(context).size.width;
+    final statColumns = width > 1100 ? 4 : width > 720 ? 2 : 1;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        PageHeader(
+          title: student.name,
+          subtitle: '${student.admissionNo} | Class ${student.classLabel} | Guardian: ${guardian.name}',
+        ),
+        GridView.count(
+          crossAxisCount: statColumns,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: 14,
+          childAspectRatio: 1.5,
+          children: [
+            StatCard(
+              title: 'Demand',
+              value: moneyFormat.format(summary.totalDemand),
+              icon: Icons.request_quote,
+              accent: const Color(0xFF2563EB),
+            ),
+            StatCard(
+              title: 'Concession',
+              value: moneyFormat.format(summary.approvedConcessions),
+              icon: Icons.verified,
+              accent: const Color(0xFF7C3AED),
+            ),
+            StatCard(
+              title: 'Paid',
+              value: moneyFormat.format(summary.paid),
+              icon: Icons.payments,
+              accent: const Color(0xFF047857),
+            ),
+            StatCard(
+              title: 'Pending',
+              value: moneyFormat.format(summary.pending),
+              icon: Icons.warning_amber,
+              accent: const Color(0xFFB45309),
+              footer: '${summary.overdueDays} overdue days',
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
+        SectionCard(
+          title: 'Fee Demands',
+          child: DataTable(
+            columns: const [
+              DataColumn(label: Text('Fee Head')),
+              DataColumn(label: Text('Amount')),
+              DataColumn(label: Text('Due Date')),
+              DataColumn(label: Text('Status')),
+            ],
+            rows: demands.map((demand) {
+              final head = state.feeHeads.firstWhere((item) => item.id == demand.feeHeadId);
+              return DataRow(cells: [
+                DataCell(Text(head.name)),
+                DataCell(Text(moneyFormat.format(demand.amount))),
+                DataCell(Text(DateFormat.yMMMd().format(demand.dueDate))),
+                DataCell(StatusPill(label: demand.status, color: statusColor(demand.status))),
+              ]);
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: 18),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: SectionCard(
+                title: 'Concessions',
+                child: concessions.isEmpty
+                    ? const EmptyState(message: 'No concessions for this student.')
+                    : Column(
+                        children: concessions.map((item) {
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text('${item.category} - ${item.concessionType}'),
+                            subtitle: Text(item.reason),
+                            trailing: StatusPill(
+                              label: item.status.label,
+                              color: statusColor(item.status.label),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+              ),
+            ),
+            const SizedBox(width: 18),
+            Expanded(
+              child: SectionCard(
+                title: 'Payments',
+                child: payments.isEmpty
+                    ? const EmptyState(message: 'No payments recorded yet.')
+                    : Column(
+                        children: payments.map((payment) {
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text('${payment.receiptNo} | ${payment.mode.label}'),
+                            subtitle: Text(payment.referenceNo),
+                            trailing: Text(moneyFormat.format(payment.amount)),
+                          );
+                        }).toList(),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
