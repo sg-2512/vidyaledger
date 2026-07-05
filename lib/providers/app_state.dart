@@ -2,8 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/models.dart';
 
-final appControllerProvider =
-    NotifierProvider<AppController, AppState>(AppController.new);
+final appControllerProvider = NotifierProvider<AppController, AppState>(
+  AppController.new,
+);
 
 class AppState {
   const AppState({
@@ -361,6 +362,10 @@ class AppController extends Notifier<AppState> {
   @override
   AppState build() => AppState.seeded();
 
+  void replaceState(AppState nextState) {
+    state = nextState;
+  }
+
   void loginAs(UserRole role) {
     final user = state.users.firstWhere((candidate) => candidate.role == role);
     state = state.copyWith(currentUser: user);
@@ -401,8 +406,9 @@ class AppController extends Notifier<AppState> {
       dueDate: dueDate,
       lateFeeAmount: lateFeeAmount,
     );
-    final targets =
-        state.students.where((student) => student.className == className);
+    final targets = state.students.where(
+      (student) => student.className == className,
+    );
     final demands = targets.map((student) {
       return FeeDemand(
         id: _id('fd'),
@@ -463,7 +469,8 @@ class AppController extends Notifier<AppState> {
     required String referenceNo,
     required String note,
   }) {
-    final receiptNo = 'VL/2026/${(state.payments.length + 1).toString().padLeft(4, '0')}';
+    final receiptNo =
+        'VL/2026/${(state.payments.length + 1).toString().padLeft(4, '0')}';
     final payment = Payment(
       id: _id('p'),
       studentId: studentId,
@@ -476,8 +483,7 @@ class AppController extends Notifier<AppState> {
       referenceNo: referenceNo,
       receiptNo: receiptNo,
       note: note,
-      chequeStatus:
-          mode == PaymentMode.cheque ? ChequeStatus.received : null,
+      chequeStatus: mode == PaymentMode.cheque ? ChequeStatus.received : null,
     );
     final reconciliation = ReconciliationItem(
       id: _id('r'),
@@ -486,8 +492,9 @@ class AppController extends Notifier<AppState> {
       status: mode == PaymentMode.cash
           ? ReconciliationStatus.matched
           : ReconciliationStatus.unmatched,
-      exceptionReason:
-          mode == PaymentMode.cash ? '' : 'Pending settlement verification',
+      exceptionReason: mode == PaymentMode.cash
+          ? ''
+          : 'Pending settlement verification',
     );
     state = state.copyWith(
       payments: [...state.payments, payment],
@@ -503,8 +510,8 @@ class AppController extends Notifier<AppState> {
       final status = chequeStatus == ChequeStatus.cleared
           ? PaymentStatus.completed
           : chequeStatus == ChequeStatus.bounced
-              ? PaymentStatus.bounced
-              : PaymentStatus.pending;
+          ? PaymentStatus.bounced
+          : PaymentStatus.pending;
       return payment.copyWith(
         status: status,
         chequeStatus: chequeStatus,
@@ -525,11 +532,16 @@ class AppController extends Notifier<AppState> {
       return item.copyWith(status: status, exceptionReason: reason);
     }).toList();
     state = state.copyWith(reconciliationItems: updated);
-    _audit('Updated reconciliation item $itemId to ${status.label}', 'reconciliation');
+    _audit(
+      'Updated reconciliation item $itemId to ${status.label}',
+      'reconciliation',
+    );
   }
 
   StudentFinanceSummary financeFor(String studentId) {
-    final demands = state.feeDemands.where((demand) => demand.studentId == studentId);
+    final demands = state.feeDemands.where(
+      (demand) => demand.studentId == studentId,
+    );
     final concessions = state.concessions.where(
       (concession) =>
           concession.studentId == studentId &&
@@ -540,11 +552,19 @@ class AppController extends Notifier<AppState> {
           payment.studentId == studentId &&
           payment.status == PaymentStatus.completed,
     );
-    final totalDemand = demands.fold<double>(0, (sum, item) => sum + item.amount);
-    final concessionTotal =
-        concessions.fold<double>(0, (sum, item) => sum + item.amount);
+    final totalDemand = demands.fold<double>(
+      0,
+      (sum, item) => sum + item.amount,
+    );
+    final concessionTotal = concessions.fold<double>(
+      0,
+      (sum, item) => sum + item.amount,
+    );
     final paid = payments.fold<double>(0, (sum, item) => sum + item.amount);
-    final pending = (totalDemand - concessionTotal - paid).clamp(0, double.infinity);
+    final pending = (totalDemand - concessionTotal - paid).clamp(
+      0,
+      double.infinity,
+    );
     final oldestDue = demands
         .where((demand) => demand.dueDate.isBefore(DateTime.now()))
         .map((demand) => DateTime.now().difference(demand.dueDate).inDays)
@@ -559,16 +579,18 @@ class AppController extends Notifier<AppState> {
   }
 
   DashboardStats dashboardStats() {
-    final totalDemand =
-        state.feeDemands.fold<double>(0, (sum, demand) => sum + demand.amount);
+    final totalDemand = state.feeDemands.fold<double>(
+      0,
+      (sum, demand) => sum + demand.amount,
+    );
     final totalConcessions = state.concessions
         .where((item) => item.status == ConcessionStatus.approved)
         .fold<double>(0, (sum, item) => sum + item.amount);
     final totalCollected = state.payments
         .where((payment) => payment.status == PaymentStatus.completed)
         .fold<double>(0, (sum, item) => sum + item.amount);
-    final totalPending =
-        (totalDemand - totalConcessions - totalCollected).clamp(0, double.infinity);
+    final totalPending = (totalDemand - totalConcessions - totalCollected)
+        .clamp(0, double.infinity);
     final defaulters = state.students
         .where((student) => financeFor(student.id).pending > 0)
         .where((student) => financeFor(student.id).overdueDays > 0)
@@ -605,5 +627,6 @@ class AppController extends Notifier<AppState> {
     state = state.copyWith(auditLogs: [log, ...state.auditLogs]);
   }
 
-  String _id(String prefix) => '$prefix-${DateTime.now().microsecondsSinceEpoch}';
+  String _id(String prefix) =>
+      '$prefix-${DateTime.now().microsecondsSinceEpoch}';
 }

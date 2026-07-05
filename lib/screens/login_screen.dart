@@ -4,12 +4,13 @@ import 'package:go_router/go_router.dart';
 
 import '../models/models.dart';
 import '../providers/app_state.dart';
+import '../providers/supabase_providers.dart';
 
 class LoginScreen extends ConsumerWidget {
   const LoginScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final roles = [
       UserRole.admin,
       UserRole.principal,
@@ -129,10 +130,10 @@ class _ProductPanel extends StatelessWidget {
           Text(
             'One auditable finance cockpit for Indian schools.',
             style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                  height: 1.05,
-                ),
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+              height: 1.05,
+            ),
           ),
           const SizedBox(height: 14),
           const Text(
@@ -174,13 +175,31 @@ class _ProductPanel extends StatelessWidget {
   }
 }
 
-class _RolePanel extends ConsumerWidget {
+class _RolePanel extends ConsumerStatefulWidget {
   const _RolePanel({required this.roles});
 
   final List<UserRole> roles;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_RolePanel> createState() => _RolePanelState();
+}
+
+class _RolePanelState extends ConsumerState<_RolePanel> {
+  final emailController = TextEditingController(text: 'admin@vidyaledger.demo');
+  final passwordController = TextEditingController(text: 'VidyaLedger@2026');
+  bool loading = false;
+
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final backendEnabled = ref.watch(supabaseFinanceServiceProvider) != null;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(26),
@@ -188,27 +207,68 @@ class _RolePanel extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Open Demo Workspace',
+              backendEnabled ? 'Sign In To Supabase' : 'Open Demo Workspace',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    color: const Color(0xFF111827),
-                  ),
+                fontWeight: FontWeight.w900,
+                color: const Color(0xFF111827),
+              ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Choose a role to view the same finance system through different school workflows.',
-              style: TextStyle(color: Color(0xFF6B7280), height: 1.4),
+            Text(
+              backendEnabled
+                  ? 'Use the demo Auth users you created in Supabase. Role cards can fill the email for faster testing.'
+                  : 'Choose a role to view the same finance system through different school workflows.',
+              style: const TextStyle(color: Color(0xFF6B7280), height: 1.4),
             ),
             const SizedBox(height: 18),
-            ...roles.map(
+            if (backendEnabled) ...[
+              TextField(
+                controller: emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Email',
+                  prefixIcon: Icon(Icons.mail_outline),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Password',
+                  prefixIcon: Icon(Icons.lock_outline),
+                ),
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: loading ? null : _signInWithSupabase,
+                  icon: loading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.login),
+                  label: Text(loading ? 'Signing in...' : 'Sign In'),
+                ),
+              ),
+              const SizedBox(height: 18),
+            ],
+            ...widget.roles.map(
               (role) => Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: _RoleTile(
                   role: role,
                   icon: _roleIcon(role),
                   onTap: () {
-                    ref.read(appControllerProvider.notifier).loginAs(role);
-                    context.go('/dashboard');
+                    if (backendEnabled) {
+                      emailController.text = _roleEmail(role);
+                    } else {
+                      ref.read(appControllerProvider.notifier).loginAs(role);
+                      context.go('/dashboard');
+                    }
                   },
                 ),
               ),
@@ -221,15 +281,17 @@ class _RolePanel extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
-              child: const Row(
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.storage_outlined, color: Color(0xFF0F766E)),
-                  SizedBox(width: 10),
+                  const Icon(Icons.storage_outlined, color: Color(0xFF0F766E)),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Demo mode is active. Supabase schema, seed data, and adapter are ready for live backend wiring.',
-                      style: TextStyle(
+                      backendEnabled
+                          ? 'Backend mode is active. Login loads students, fees, payments, concessions, reconciliation, and audit logs from Supabase.'
+                          : 'Demo mode is active. Add Supabase dart-defines to enable real backend login.',
+                      style: const TextStyle(
                         color: Color(0xFF475569),
                         fontSize: 13,
                         height: 1.35,
@@ -245,6 +307,34 @@ class _RolePanel extends ConsumerWidget {
     );
   }
 
+  Future<void> _signInWithSupabase() async {
+    final service = ref.read(supabaseFinanceServiceProvider);
+    if (service == null) return;
+
+    setState(() => loading = true);
+    try {
+      await service.signIn(
+        email: emailController.text.trim(),
+        password: passwordController.text,
+      );
+      final user = await refreshAppStateFromSupabase(ref);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Signed in as ${user?.name ?? 'Supabase user'}'),
+        ),
+      );
+      context.go('/dashboard');
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Backend login failed: $error')));
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
   IconData _roleIcon(UserRole role) {
     return switch (role) {
       UserRole.admin => Icons.admin_panel_settings,
@@ -252,6 +342,16 @@ class _RolePanel extends ConsumerWidget {
       UserRole.accountant => Icons.calculate,
       UserRole.clerk => Icons.receipt_long,
       UserRole.parent => Icons.family_restroom,
+    };
+  }
+
+  String _roleEmail(UserRole role) {
+    return switch (role) {
+      UserRole.admin => 'admin@vidyaledger.demo',
+      UserRole.principal => 'principal@vidyaledger.demo',
+      UserRole.accountant => 'accounts@vidyaledger.demo',
+      UserRole.clerk => 'clerk@vidyaledger.demo',
+      UserRole.parent => 'parent@vidyaledger.demo',
     };
   }
 }

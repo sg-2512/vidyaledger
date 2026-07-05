@@ -52,6 +52,19 @@ class SupabaseFinanceService {
 
   SupabaseClient get client => _client ?? Supabase.instance.client;
 
+  Future<void> signIn({required String email, required String password}) async {
+    await client.auth.signInWithPassword(email: email, password: password);
+  }
+
+  Future<void> signOut() async {
+    await client.auth.signOut();
+  }
+
+  Future<AppUser> loadCurrentAppUser() async {
+    final row = await _currentUserRow();
+    return _userFromRow(row);
+  }
+
   Future<FinanceSnapshot> loadSnapshot() async {
     final results = await Future.wait<List<Map<String, dynamic>>>([
       _selectTable('users', orderBy: 'name'),
@@ -80,6 +93,96 @@ class SupabaseFinanceService {
     );
   }
 
+  Future<Payment> recordPayment({
+    required String studentId,
+    required double amount,
+    required PaymentMode mode,
+    required String referenceNo,
+    required String note,
+  }) async {
+    final userRow = await _currentUserRow();
+    final schoolId = userRow['school_id'].toString();
+    final existingPayments = await _selectTable('payments');
+    final receiptNo =
+        'VL/2026/${(existingPayments.length + 1).toString().padLeft(4, '0')}';
+    final paymentStatus = mode == PaymentMode.cheque
+        ? PaymentStatus.pending
+        : PaymentStatus.completed;
+    final chequeStatus = mode == PaymentMode.cheque
+        ? ChequeStatus.received
+        : null;
+
+    final inserted = await client
+        .from('payments')
+        .insert({
+          'school_id': schoolId,
+          'student_id': studentId,
+          'amount': amount,
+          'mode': _paymentModeDb(mode),
+          'status': _paymentStatusDb(paymentStatus),
+          'cheque_status': chequeStatus == null
+              ? null
+              : _chequeStatusDb(chequeStatus),
+          'reference_no': referenceNo,
+          'receipt_no': receiptNo,
+          'note': note,
+        })
+        .select()
+        .single();
+    final payment = _paymentFromRow(Map<String, dynamic>.from(inserted as Map));
+
+    await client.from('receipts').insert({
+      'school_id': schoolId,
+      'payment_id': payment.id,
+      'receipt_no': receiptNo,
+    });
+
+    await _tryInsertReconciliation(
+      schoolId: schoolId,
+      paymentId: payment.id,
+      referenceNo: referenceNo,
+      mode: mode,
+    );
+    await _insertAuditLog(
+      userRow: userRow,
+      action: 'Recorded ${mode.label} payment $receiptNo',
+      objectType: 'payment',
+      objectId: payment.id,
+    );
+
+    return payment;
+  }
+
+  Future<Payment> updateChequeStatus(
+    String paymentId,
+    ChequeStatus chequeStatus,
+  ) async {
+    final userRow = await _currentUserRow();
+    final paymentStatus = chequeStatus == ChequeStatus.cleared
+        ? PaymentStatus.completed
+        : chequeStatus == ChequeStatus.bounced
+        ? PaymentStatus.bounced
+        : PaymentStatus.pending;
+    final updated = await client
+        .from('payments')
+        .update({
+          'status': _paymentStatusDb(paymentStatus),
+          'cheque_status': _chequeStatusDb(chequeStatus),
+          'note': 'Cheque ${chequeStatus.name}',
+        })
+        .eq('id', paymentId)
+        .select()
+        .single();
+    final payment = _paymentFromRow(Map<String, dynamic>.from(updated as Map));
+    await _insertAuditLog(
+      userRow: userRow,
+      action: 'Marked cheque $paymentId as ${chequeStatus.name}',
+      objectType: 'payment',
+      objectId: paymentId,
+    );
+    return payment;
+  }
+
   Future<List<Map<String, dynamic>>> _selectTable(
     String table, {
     String? orderBy,
@@ -90,9 +193,57 @@ class SupabaseFinanceService {
     }
     final data = await query;
     final rows = data as List<dynamic>;
-    return rows
-        .map((row) => Map<String, dynamic>.from(row as Map))
-        .toList();
+    return rows.map((row) => Map<String, dynamic>.from(row as Map)).toList();
+  }
+
+  Future<Map<String, dynamic>> _currentUserRow() async {
+    final authUser = client.auth.currentUser;
+    if (authUser == null) {
+      throw StateError('No Supabase user is signed in.');
+    }
+    final row = await client
+        .from('users')
+        .select()
+        .eq('auth_user_id', authUser.id)
+        .single();
+    return Map<String, dynamic>.from(row as Map);
+  }
+
+  Future<void> _tryInsertReconciliation({
+    required String schoolId,
+    required String paymentId,
+    required String referenceNo,
+    required PaymentMode mode,
+  }) async {
+    try {
+      await client.from('reconciliation_items').insert({
+        'school_id': schoolId,
+        'payment_id': paymentId,
+        'channel_ref': referenceNo,
+        'status': mode == PaymentMode.cash ? 'matched' : 'unmatched',
+        'exception_reason': mode == PaymentMode.cash
+            ? ''
+            : 'Pending settlement verification',
+      });
+    } catch (_) {
+      // Fee clerks can collect payments but may not have reconciliation rights.
+    }
+  }
+
+  Future<void> _insertAuditLog({
+    required Map<String, dynamic> userRow,
+    required String action,
+    required String objectType,
+    String? objectId,
+  }) async {
+    await client.from('audit_logs').insert({
+      'school_id': userRow['school_id'],
+      'user_id': userRow['id'],
+      'actor': userRow['name'],
+      'action': action,
+      'object_type': objectType,
+      'object_id': objectId,
+    });
   }
 
   AppUser _userFromRow(Map<String, dynamic> row) {
@@ -267,6 +418,33 @@ class SupabaseFinanceService {
       'partial' => ReconciliationStatus.partial,
       'overpaid' => ReconciliationStatus.overpaid,
       _ => ReconciliationStatus.unmatched,
+    };
+  }
+
+  String _paymentModeDb(PaymentMode value) {
+    return switch (value) {
+      PaymentMode.cash => 'cash',
+      PaymentMode.cheque => 'cheque',
+      PaymentMode.bankTransfer => 'bank_transfer',
+      PaymentMode.upi => 'upi',
+    };
+  }
+
+  String _paymentStatusDb(PaymentStatus value) {
+    return switch (value) {
+      PaymentStatus.pending => 'pending',
+      PaymentStatus.bounced => 'bounced',
+      PaymentStatus.reversed => 'reversed',
+      PaymentStatus.completed => 'completed',
+    };
+  }
+
+  String _chequeStatusDb(ChequeStatus value) {
+    return switch (value) {
+      ChequeStatus.received => 'received',
+      ChequeStatus.deposited => 'deposited',
+      ChequeStatus.cleared => 'cleared',
+      ChequeStatus.bounced => 'bounced',
     };
   }
 

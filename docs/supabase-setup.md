@@ -42,9 +42,10 @@ It can read these tables and map rows into app models:
 Riverpod providers for the backend adapter live in
 `lib/providers/supabase_providers.dart`.
 
-Important: the UI still uses the seeded demo controller by default. The next
-backend task is to replace screens gradually with Supabase-backed providers once
-the real project URL, publishable key, Auth users, and `public.users` rows exist.
+When `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` are provided, the login
+screen switches to Supabase Auth, loads the backend snapshot into Riverpod, and
+persists payment/cheque actions back to Supabase. Without these keys, the app
+keeps the seeded demo-mode role buttons.
 
 ## Recommended Wiring Order
 
@@ -55,6 +56,6 @@ the real project URL, publishable key, Auth users, and `public.users` rows exist
 5. Run `seed.sql` to create demo users, students, fee rules, demands,
    concessions, payments, reconciliation rows, and the starter audit log.
 6. Start Flutter with `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`.
-7. Use `supabaseFinanceSnapshotProvider` to verify data loading.
-8. Replace one screen at a time, starting with Students, then Dashboard, then
-   Payments.
+7. Login with one of the Supabase Auth demo users.
+8. Verify dashboard data, payment recording, cheque status changes, receipts,
+   and audit logs.

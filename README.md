@@ -13,14 +13,14 @@ VidyaLedger is a Flutter Web hackathon prototype for Indian school fee and finan
 
 ## Current Status
 
-This repository contains a working Flutter demo-mode app plus Supabase schema files and a first Supabase data-service adapter. Demo mode uses seeded in-memory data so the UI can be tested before Supabase credentials are connected.
+This repository contains a working Flutter Web app with demo-mode fallback and Supabase-backed login/data loading when credentials are provided at build time.
 
 ## Architecture Status
 
-- Demo state: Riverpod `NotifierProvider` with seeded Indian-school finance data.
+- Demo state: Riverpod `NotifierProvider` with seeded Indian-school finance data when Supabase keys are absent.
 - Computed finance state: focused Riverpod providers for dashboard stats, visible students, concessions, payment-mode totals, and student finance summaries.
-- Backend foundation: Supabase/PostgreSQL schema, seed data, and `SupabaseFinanceService` row mappers.
-- Pending backend work: create the real Supabase project, Auth users, matching `public.users` rows, and wire screens from demo state to Supabase-backed providers.
+- Backend foundation: Supabase/PostgreSQL schema, seed data, Auth-backed login, backend snapshot loading, payment recording, cheque status updates, receipt rows, and audit-log inserts.
+- Pending production work: real payment gateway callbacks, document storage for generated PDFs, SMS/WhatsApp messaging, Tally export, and stronger operational dashboards.
 
 ## Setup
 
@@ -58,13 +58,13 @@ flutter run -d chrome \
 
 ## Demo Accounts
 
-Use the role buttons on the login screen:
+In demo mode, use the role buttons on the login screen. In Supabase mode, use the Auth users created in Supabase:
 
-- Admin
-- Principal
-- Accountant
-- Fee Clerk
-- Parent
+- `admin@vidyaledger.demo`
+- `principal@vidyaledger.demo`
+- `accounts@vidyaledger.demo`
+- `clerk@vidyaledger.demo`
+- `parent@vidyaledger.demo`
 
 ## Core Demo Flow
 

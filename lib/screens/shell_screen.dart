@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../models/models.dart';
 import '../providers/app_state.dart';
+import '../providers/supabase_providers.dart';
 
 class ShellScreen extends ConsumerWidget {
   const ShellScreen({required this.child, super.key});
@@ -28,7 +29,12 @@ class ShellScreen extends ConsumerWidget {
       _NavItem('Reports', Icons.picture_as_pdf_outlined, '/reports'),
     ];
 
-    void logout() {
+    Future<void> logout() async {
+      final service = ref.read(supabaseFinanceServiceProvider);
+      if (service != null) {
+        await service.signOut();
+      }
+      if (!context.mounted) return;
       ref.read(appControllerProvider.notifier).logout();
       context.go('/login');
     }
@@ -127,9 +133,7 @@ class _TopBar extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 24),
           decoration: const BoxDecoration(
             color: Colors.white,
-            border: Border(
-              bottom: BorderSide(color: Color(0xFFE2E8F0)),
-            ),
+            border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
           ),
           child: Row(
             children: [
@@ -174,8 +178,10 @@ class _TopBar extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFF8FAFC),
                     borderRadius: BorderRadius.circular(8),
@@ -264,9 +270,7 @@ class _NavigationPanel extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
-        border: Border(
-          right: BorderSide(color: Color(0xFFE2E8F0)),
-        ),
+        border: Border(right: BorderSide(color: Color(0xFFE2E8F0))),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -371,7 +375,8 @@ class _NavigationPanel extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               children: navItems.map((item) {
-                final active = currentPath == item.path ||
+                final active =
+                    currentPath == item.path ||
                     (item.path != '/dashboard' &&
                         currentPath.startsWith(item.path));
                 return _NavTile(
@@ -409,10 +414,8 @@ class _NavTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final foreground =
-        active ? Colors.white : const Color(0xFF475569);
-    final background =
-        active ? const Color(0xFF0F766E) : Colors.transparent;
+    final foreground = active ? Colors.white : const Color(0xFF475569);
+    final background = active ? const Color(0xFF0F766E) : Colors.transparent;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),

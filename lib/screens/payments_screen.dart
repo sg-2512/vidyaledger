@@ -5,6 +5,7 @@ import 'package:printing/printing.dart';
 import '../models/models.dart';
 import '../providers/app_state.dart';
 import '../providers/finance_providers.dart';
+import '../providers/supabase_providers.dart';
 import '../services/report_service.dart';
 import '../widgets/common.dart';
 
@@ -21,6 +22,7 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
   final amountController = TextEditingController(text: '8000');
   final referenceController = TextEditingController(text: 'UPI-DEMO-001');
   final noteController = TextEditingController(text: 'Term fee payment');
+  bool recording = false;
 
   @override
   void dispose() {
@@ -45,7 +47,8 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
       children: [
         const PageHeader(
           title: 'Payment Collection',
-          subtitle: 'Counter collection, receipt issue, and cheque lifecycle control.',
+          subtitle:
+              'Counter collection, receipt issue, and cheque lifecycle control.',
         ),
         _PaymentSummary(
           collected: stats.totalCollected,
@@ -63,6 +66,7 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
               amountController: amountController,
               referenceController: referenceController,
               noteController: noteController,
+              recording: recording,
               onStudentChanged: (value) => setState(() => studentId = value),
               onModeChanged: (value) => setState(() => mode = value ?? mode),
               onRecord: _recordPayment,
@@ -75,11 +79,7 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
             return stacked
                 ? Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      form,
-                      const SizedBox(height: 18),
-                      receipts,
-                    ],
+                    children: [form, const SizedBox(height: 18), receipts],
                   )
                 : Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -95,17 +95,56 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
     );
   }
 
-  void _recordPayment() {
-    final payment = ref.read(appControllerProvider.notifier).recordPayment(
-          studentId: studentId!,
-          amount: double.tryParse(amountController.text) ?? 0,
-          mode: mode,
-          referenceNo: referenceController.text.trim(),
-          note: noteController.text.trim(),
+  Future<void> _recordPayment() async {
+    if (studentId == null || recording) return;
+
+    setState(() => recording = true);
+    try {
+      final service = ref.read(supabaseFinanceServiceProvider);
+      final amount = double.tryParse(amountController.text) ?? 0;
+      final referenceNo = referenceController.text.trim();
+      final note = noteController.text.trim();
+
+      if (service == null) {
+        final payment = ref
+            .read(appControllerProvider.notifier)
+            .recordPayment(
+              studentId: studentId!,
+              amount: amount,
+              mode: mode,
+              referenceNo: referenceNo,
+              note: note,
+            );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Payment recorded: ${payment.receiptNo}')),
         );
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Payment recorded: ${payment.receiptNo}')),
-    );
+        return;
+      }
+
+      final payment = await service.recordPayment(
+        studentId: studentId!,
+        amount: amount,
+        mode: mode,
+        referenceNo: referenceNo,
+        note: note,
+      );
+      await refreshAppStateFromSupabase(
+        ref,
+        currentUser: ref.read(appControllerProvider).currentUser,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Backend payment saved: ${payment.receiptNo}')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Payment failed: $error')));
+    } finally {
+      if (mounted) setState(() => recording = false);
+    }
   }
 }
 
@@ -222,6 +261,7 @@ class _PaymentForm extends StatelessWidget {
     required this.amountController,
     required this.referenceController,
     required this.noteController,
+    required this.recording,
     required this.onStudentChanged,
     required this.onModeChanged,
     required this.onRecord,
@@ -233,6 +273,7 @@ class _PaymentForm extends StatelessWidget {
   final TextEditingController amountController;
   final TextEditingController referenceController;
   final TextEditingController noteController;
+  final bool recording;
   final ValueChanged<String?> onStudentChanged;
   final ValueChanged<PaymentMode?> onModeChanged;
   final VoidCallback onRecord;
@@ -262,10 +303,8 @@ class _PaymentForm extends StatelessWidget {
             decoration: const InputDecoration(labelText: 'Payment mode'),
             items: PaymentMode.values
                 .map(
-                  (item) => DropdownMenuItem(
-                    value: item,
-                    child: Text(item.label),
-                  ),
+                  (item) =>
+                      DropdownMenuItem(value: item, child: Text(item.label)),
                 )
                 .toList(),
             onChanged: onModeChanged,
@@ -299,9 +338,17 @@ class _PaymentForm extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
-              onPressed: onRecord,
-              icon: const Icon(Icons.receipt_long),
-              label: const Text('Record and Issue Receipt'),
+              onPressed: recording ? null : onRecord,
+              icon: recording
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.receipt_long),
+              label: Text(
+                recording ? 'Recording...' : 'Record and Issue Receipt',
+              ),
             ),
           ),
         ],
@@ -311,10 +358,7 @@ class _PaymentForm extends StatelessWidget {
 }
 
 class _ReceiptRegister extends ConsumerWidget {
-  const _ReceiptRegister({
-    required this.students,
-    required this.payments,
-  });
+  const _ReceiptRegister({required this.students, required this.payments});
 
   final List<Student> students;
   final List<Payment> payments;
@@ -332,6 +376,32 @@ class _ReceiptRegister extends ConsumerWidget {
               final student = students.firstWhere(
                 (item) => item.id == payment.studentId,
               );
+              Future<void> updateCheque(ChequeStatus status) async {
+                try {
+                  final service = ref.read(supabaseFinanceServiceProvider);
+                  if (service == null) {
+                    ref
+                        .read(appControllerProvider.notifier)
+                        .updateChequeStatus(payment.id, status);
+                  } else {
+                    await service.updateChequeStatus(payment.id, status);
+                    await refreshAppStateFromSupabase(
+                      ref,
+                      currentUser: ref.read(appControllerProvider).currentUser,
+                    );
+                  }
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Cheque marked ${status.name}.')),
+                  );
+                } catch (error) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Cheque update failed: $error')),
+                  );
+                }
+              }
+
               return _ReceiptRow(
                 payment: payment,
                 student: student,
@@ -348,14 +418,10 @@ class _ReceiptRegister extends ConsumerWidget {
                   );
                 },
                 onClear: payment.mode == PaymentMode.cheque
-                    ? () => ref
-                        .read(appControllerProvider.notifier)
-                        .updateChequeStatus(payment.id, ChequeStatus.cleared)
+                    ? () => updateCheque(ChequeStatus.cleared)
                     : null,
                 onBounce: payment.mode == PaymentMode.cheque
-                    ? () => ref
-                        .read(appControllerProvider.notifier)
-                        .updateChequeStatus(payment.id, ChequeStatus.bounced)
+                    ? () => updateCheque(ChequeStatus.bounced)
                     : null,
               );
             }).toList(),
