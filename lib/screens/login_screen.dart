@@ -188,6 +188,7 @@ class _RolePanelState extends ConsumerState<_RolePanel> {
   final emailController = TextEditingController(text: 'admin@vidyaledger.demo');
   final passwordController = TextEditingController(text: 'VidyaLedger@2026');
   UserRole selectedRole = UserRole.admin;
+  String? loginError;
   bool loading = false;
 
   @override
@@ -221,9 +222,14 @@ class _RolePanelState extends ConsumerState<_RolePanel> {
                   : 'Choose a role first, then continue into the local demo workspace.',
               style: const TextStyle(color: Color(0xFF6B7280), height: 1.4),
             ),
+            if (loginError case final message?) ...[
+              const SizedBox(height: 12),
+              _LoginErrorBanner(message: message),
+            ],
             const SizedBox(height: 18),
             TextField(
               controller: emailController,
+              onChanged: (_) => _clearLoginError(),
               enabled: backendEnabled,
               keyboardType: TextInputType.emailAddress,
               decoration: InputDecoration(
@@ -234,6 +240,7 @@ class _RolePanelState extends ConsumerState<_RolePanel> {
             const SizedBox(height: 12),
             TextField(
               controller: passwordController,
+              onChanged: (_) => _clearLoginError(),
               enabled: backendEnabled,
               obscureText: true,
               decoration: InputDecoration(
@@ -278,6 +285,7 @@ class _RolePanelState extends ConsumerState<_RolePanel> {
                     setState(() {
                       selectedRole = role;
                       emailController.text = _roleEmail(role);
+                      loginError = null;
                     });
                   },
                 ),
@@ -326,7 +334,10 @@ class _RolePanelState extends ConsumerState<_RolePanel> {
     final service = ref.read(supabaseFinanceServiceProvider);
     if (service == null) return;
 
-    setState(() => loading = true);
+    setState(() {
+      loading = true;
+      loginError = null;
+    });
     try {
       await service.signIn(
         email: emailController.text.trim(),
@@ -342,12 +353,36 @@ class _RolePanelState extends ConsumerState<_RolePanel> {
       context.go('/dashboard');
     } catch (error) {
       if (!mounted) return;
+      final message = _friendlyLoginError(error);
+      setState(() => loginError = message);
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Backend login failed: $error')));
+      ).showSnackBar(SnackBar(content: Text(message)));
     } finally {
       if (mounted) setState(() => loading = false);
     }
+  }
+
+  void _clearLoginError() {
+    if (loginError == null) return;
+    setState(() => loginError = null);
+  }
+
+  String _friendlyLoginError(Object error) {
+    final raw = error.toString().toLowerCase();
+    if (raw.contains('invalid login credentials') ||
+        raw.contains('invalid_credentials')) {
+      return 'Incorrect email or password. Select the right role and try the demo password again.';
+    }
+    if (raw.contains('email not confirmed')) {
+      return 'This demo user is not confirmed in Supabase Auth. Mark the user as confirmed or disable email confirmation.';
+    }
+    if (raw.contains('network') ||
+        raw.contains('failed host lookup') ||
+        raw.contains('xmlhttprequest')) {
+      return 'Could not reach Supabase. Check your internet connection and Supabase project URL.';
+    }
+    return 'Sign in failed. Please check the selected role, password, and Supabase Auth user setup.';
   }
 
   IconData _roleIcon(UserRole role) {
@@ -368,6 +403,41 @@ class _RolePanelState extends ConsumerState<_RolePanel> {
       UserRole.clerk => 'clerk@vidyaledger.demo',
       UserRole.parent => 'parent@vidyaledger.demo',
     };
+  }
+}
+
+class _LoginErrorBanner extends StatelessWidget {
+  const _LoginErrorBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7ED),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFF97316)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline, color: Color(0xFFC2410C), size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: Color(0xFF9A3412),
+                fontWeight: FontWeight.w700,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
