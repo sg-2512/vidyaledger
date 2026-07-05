@@ -33,148 +33,467 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
+    final stats = ref.watch(dashboardStatsProvider);
     studentId ??= state.students.first.id;
+    final chequeQueue = state.payments
+        .where((payment) => payment.mode == PaymentMode.cheque)
+        .where((payment) => payment.status == PaymentStatus.pending)
+        .length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const PageHeader(
           title: 'Payment Collection',
-          subtitle: 'Record UPI, cash, cheque, and bank-transfer payments with receipts.',
+          subtitle: 'Counter collection, receipt issue, and cheque lifecycle control.',
         ),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        _PaymentSummary(
+          collected: stats.totalCollected,
+          pending: stats.totalPending,
+          chequeQueue: chequeQueue,
+        ),
+        const SizedBox(height: 18),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final stacked = constraints.maxWidth < 980;
+            final form = _PaymentForm(
+              students: state.students,
+              selectedStudentId: studentId,
+              mode: mode,
+              amountController: amountController,
+              referenceController: referenceController,
+              noteController: noteController,
+              onStudentChanged: (value) => setState(() => studentId = value),
+              onModeChanged: (value) => setState(() => mode = value ?? mode),
+              onRecord: _recordPayment,
+            );
+            final receipts = _ReceiptRegister(
+              students: state.students,
+              payments: state.payments,
+            );
+
+            return stacked
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      form,
+                      const SizedBox(height: 18),
+                      receipts,
+                    ],
+                  )
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(width: 410, child: form),
+                      const SizedBox(width: 18),
+                      Expanded(child: receipts),
+                    ],
+                  );
+          },
+        ),
+      ],
+    );
+  }
+
+  void _recordPayment() {
+    final payment = ref.read(appControllerProvider.notifier).recordPayment(
+          studentId: studentId!,
+          amount: double.tryParse(amountController.text) ?? 0,
+          mode: mode,
+          referenceNo: referenceController.text.trim(),
+          note: noteController.text.trim(),
+        );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Payment recorded: ${payment.receiptNo}')),
+    );
+  }
+}
+
+class _PaymentSummary extends StatelessWidget {
+  const _PaymentSummary({
+    required this.collected,
+    required this.pending,
+    required this.chequeQueue,
+  });
+
+  final double collected;
+  final double pending;
+  final int chequeQueue;
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.count(
+      crossAxisCount: MediaQuery.of(context).size.width > 900 ? 3 : 1,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisSpacing: 14,
+      mainAxisSpacing: 14,
+      childAspectRatio: MediaQuery.of(context).size.width > 900 ? 3.2 : 3.8,
+      children: [
+        _PaymentMetric(
+          icon: Icons.account_balance_wallet_outlined,
+          label: 'Collected',
+          value: moneyFormat.format(collected),
+          color: const Color(0xFF047857),
+        ),
+        _PaymentMetric(
+          icon: Icons.pending_actions_outlined,
+          label: 'Pending Dues',
+          value: moneyFormat.format(pending),
+          color: const Color(0xFFB45309),
+        ),
+        _PaymentMetric(
+          icon: Icons.price_check_outlined,
+          label: 'Cheque Queue',
+          value: chequeQueue.toString(),
+          color: const Color(0xFF2563EB),
+        ),
+      ],
+    );
+  }
+}
+
+class _PaymentMetric extends StatelessWidget {
+  const _PaymentMetric({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
           children: [
-            SizedBox(
-              width: 400,
-              child: SectionCard(
-                title: 'Record Payment',
-                child: Column(
-                  children: [
-                    DropdownButtonFormField<String>(
-                      initialValue: studentId,
-                      decoration: const InputDecoration(labelText: 'Student'),
-                      items: state.students
-                          .map((student) => DropdownMenuItem(value: student.id, child: Text(student.name)))
-                          .toList(),
-                      onChanged: (value) => setState(() => studentId = value),
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<PaymentMode>(
-                      initialValue: mode,
-                      decoration: const InputDecoration(labelText: 'Payment mode'),
-                      items: PaymentMode.values
-                          .map((item) => DropdownMenuItem(value: item, child: Text(item.label)))
-                          .toList(),
-                      onChanged: (value) => setState(() => mode = value ?? mode),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: amountController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Amount'),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: referenceController,
-                      decoration: const InputDecoration(labelText: 'UPI / cheque / bank reference'),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: noteController,
-                      decoration: const InputDecoration(labelText: 'Note'),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: () {
-                          final payment = ref.read(appControllerProvider.notifier).recordPayment(
-                                studentId: studentId!,
-                                amount: double.tryParse(amountController.text) ?? 0,
-                                mode: mode,
-                                referenceNo: referenceController.text.trim(),
-                                note: noteController.text.trim(),
-                              );
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Payment recorded: ${payment.receiptNo}')),
-                          );
-                        },
-                        icon: const Icon(Icons.receipt_long),
-                        label: const Text('Record Payment'),
-                      ),
-                    ),
-                  ],
-                ),
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
               ),
+              child: Icon(icon, color: color),
             ),
-            const SizedBox(width: 18),
+            const SizedBox(width: 14),
             Expanded(
-              child: SectionCard(
-                title: 'Receipt Register',
-                child: DataTable(
-                  columns: const [
-                    DataColumn(label: Text('Receipt')),
-                    DataColumn(label: Text('Student')),
-                    DataColumn(label: Text('Mode')),
-                    DataColumn(label: Text('Amount')),
-                    DataColumn(label: Text('Status')),
-                    DataColumn(label: Text('Actions')),
-                  ],
-                  rows: state.payments.map((payment) {
-                    final student = state.students.firstWhere((item) => item.id == payment.studentId);
-                    return DataRow(cells: [
-                      DataCell(Text(payment.receiptNo)),
-                      DataCell(Text(student.name)),
-                      DataCell(Text(payment.mode.label)),
-                      DataCell(Text(moneyFormat.format(payment.amount))),
-                      DataCell(StatusPill(label: payment.status.label, color: statusColor(payment.status.label))),
-                      DataCell(
-                        Wrap(
-                          spacing: 4,
-                          children: [
-                            TextButton(
-                              onPressed: () async {
-                                final summary = ref.read(
-                                  financeSummaryProvider(student.id),
-                                );
-                                final bytes = await ReportService.buildReceiptPdf(
-                                  payment: payment,
-                                  student: student,
-                                  summary: summary,
-                                );
-                                await Printing.sharePdf(
-                                  bytes: bytes,
-                                  filename: '${payment.receiptNo.replaceAll('/', '-')}.pdf',
-                                );
-                              },
-                              child: const Text('PDF'),
-                            ),
-                            if (payment.mode == PaymentMode.cheque) ...[
-                              TextButton(
-                                onPressed: () => ref
-                                    .read(appControllerProvider.notifier)
-                                    .updateChequeStatus(payment.id, ChequeStatus.cleared),
-                                child: const Text('Clear'),
-                              ),
-                              TextButton(
-                                onPressed: () => ref
-                                    .read(appControllerProvider.notifier)
-                                    .updateChequeStatus(payment.id, ChequeStatus.bounced),
-                                child: const Text('Bounce'),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ]);
-                  }).toList(),
-                ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: Color(0xFF64748B),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    value,
+                    style: const TextStyle(
+                      color: Color(0xFF111827),
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
         ),
-      ],
+      ),
+    );
+  }
+}
+
+class _PaymentForm extends StatelessWidget {
+  const _PaymentForm({
+    required this.students,
+    required this.selectedStudentId,
+    required this.mode,
+    required this.amountController,
+    required this.referenceController,
+    required this.noteController,
+    required this.onStudentChanged,
+    required this.onModeChanged,
+    required this.onRecord,
+  });
+
+  final List<Student> students;
+  final String? selectedStudentId;
+  final PaymentMode mode;
+  final TextEditingController amountController;
+  final TextEditingController referenceController;
+  final TextEditingController noteController;
+  final ValueChanged<String?> onStudentChanged;
+  final ValueChanged<PaymentMode?> onModeChanged;
+  final VoidCallback onRecord;
+
+  @override
+  Widget build(BuildContext context) {
+    return SectionCard(
+      title: 'Record Payment',
+      child: Column(
+        children: [
+          DropdownButtonFormField<String>(
+            initialValue: selectedStudentId,
+            decoration: const InputDecoration(labelText: 'Student'),
+            items: students
+                .map(
+                  (student) => DropdownMenuItem(
+                    value: student.id,
+                    child: Text('${student.name} - ${student.classLabel}'),
+                  ),
+                )
+                .toList(),
+            onChanged: onStudentChanged,
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<PaymentMode>(
+            initialValue: mode,
+            decoration: const InputDecoration(labelText: 'Payment mode'),
+            items: PaymentMode.values
+                .map(
+                  (item) => DropdownMenuItem(
+                    value: item,
+                    child: Text(item.label),
+                  ),
+                )
+                .toList(),
+            onChanged: onModeChanged,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: amountController,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'Amount',
+              prefixIcon: Icon(Icons.currency_rupee),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: referenceController,
+            decoration: const InputDecoration(
+              labelText: 'UPI / cheque / bank reference',
+              prefixIcon: Icon(Icons.confirmation_number_outlined),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: noteController,
+            decoration: const InputDecoration(
+              labelText: 'Collection note',
+              prefixIcon: Icon(Icons.notes_outlined),
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: onRecord,
+              icon: const Icon(Icons.receipt_long),
+              label: const Text('Record and Issue Receipt'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReceiptRegister extends ConsumerWidget {
+  const _ReceiptRegister({
+    required this.students,
+    required this.payments,
+  });
+
+  final List<Student> students;
+  final List<Payment> payments;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return SectionCard(
+      title: 'Receipt Register',
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 860),
+          child: Column(
+            children: payments.map((payment) {
+              final student = students.firstWhere(
+                (item) => item.id == payment.studentId,
+              );
+              return _ReceiptRow(
+                payment: payment,
+                student: student,
+                onPdf: () async {
+                  final summary = ref.read(financeSummaryProvider(student.id));
+                  final bytes = await ReportService.buildReceiptPdf(
+                    payment: payment,
+                    student: student,
+                    summary: summary,
+                  );
+                  await Printing.sharePdf(
+                    bytes: bytes,
+                    filename: '${payment.receiptNo.replaceAll('/', '-')}.pdf',
+                  );
+                },
+                onClear: payment.mode == PaymentMode.cheque
+                    ? () => ref
+                        .read(appControllerProvider.notifier)
+                        .updateChequeStatus(payment.id, ChequeStatus.cleared)
+                    : null,
+                onBounce: payment.mode == PaymentMode.cheque
+                    ? () => ref
+                        .read(appControllerProvider.notifier)
+                        .updateChequeStatus(payment.id, ChequeStatus.bounced)
+                    : null,
+              );
+            }).toList(),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReceiptRow extends StatelessWidget {
+  const _ReceiptRow({
+    required this.payment,
+    required this.student,
+    required this.onPdf,
+    required this.onClear,
+    required this.onBounce,
+  });
+
+  final Payment payment;
+  final Student student;
+  final VoidCallback onPdf;
+  final VoidCallback? onClear;
+  final VoidCallback? onBounce;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 860,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFAFAFA),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFFE5E7EB)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 132,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    payment.receiptNo,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    payment.referenceNo,
+                    style: const TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(
+              width: 180,
+              child: Text(
+                '${student.name}\nClass ${student.classLabel}',
+                style: const TextStyle(height: 1.35),
+              ),
+            ),
+            SizedBox(width: 120, child: Text(payment.mode.label)),
+            SizedBox(
+              width: 110,
+              child: Text(moneyFormat.format(payment.amount)),
+            ),
+            SizedBox(
+              width: 118,
+              child: StatusPill(
+                label: payment.status.label,
+                color: statusColor(payment.status.label),
+              ),
+            ),
+            SizedBox(
+              width: 252,
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  _MiniAction(
+                    label: 'PDF',
+                    icon: Icons.picture_as_pdf,
+                    onTap: onPdf,
+                  ),
+                  if (onClear != null)
+                    _MiniAction(
+                      label: 'Clear',
+                      icon: Icons.check_circle_outline,
+                      onTap: onClear!,
+                    ),
+                  if (onBounce != null)
+                    _MiniAction(
+                      label: 'Bounce',
+                      icon: Icons.report_gmailerrorred,
+                      onTap: onBounce!,
+                      danger: true,
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniAction extends StatelessWidget {
+  const _MiniAction({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    this.danger = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = danger ? const Color(0xFFB91C1C) : const Color(0xFF0F766E);
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 16),
+      label: Text(label),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: color,
+        side: BorderSide(color: color.withValues(alpha: 0.35)),
+        visualDensity: VisualDensity.compact,
+      ),
     );
   }
 }
