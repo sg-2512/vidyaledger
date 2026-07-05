@@ -4,6 +4,7 @@ import 'package:printing/printing.dart';
 
 import '../models/models.dart';
 import '../providers/app_state.dart';
+import '../providers/finance_providers.dart';
 import '../services/report_service.dart';
 import '../widgets/common.dart';
 
@@ -134,9 +135,9 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
                           children: [
                             TextButton(
                               onPressed: () async {
-                                final summary = ref
-                                    .read(appControllerProvider.notifier)
-                                    .financeFor(student.id);
+                                final summary = ref.read(
+                                  financeSummaryProvider(student.id),
+                                );
                                 final bytes = await ReportService.buildReceiptPdf(
                                   payment: payment,
                                   student: student,

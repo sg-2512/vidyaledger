@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../models/models.dart';
 import '../providers/app_state.dart';
+import '../providers/finance_providers.dart';
 import '../widgets/common.dart';
 
 class StudentProfileScreen extends ConsumerWidget {
@@ -14,10 +15,9 @@ class StudentProfileScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(appControllerProvider);
-    final controller = ref.read(appControllerProvider.notifier);
     final student = state.students.firstWhere((item) => item.id == studentId);
     final guardian = state.guardians.firstWhere((item) => item.id == student.guardianId);
-    final summary = controller.financeFor(student.id);
+    final summary = ref.watch(financeSummaryProvider(student.id));
     final demands = state.feeDemands.where((item) => item.studentId == student.id).toList();
     final concessions = state.concessions.where((item) => item.studentId == student.id).toList();
     final payments = state.payments.where((item) => item.studentId == student.id).toList();

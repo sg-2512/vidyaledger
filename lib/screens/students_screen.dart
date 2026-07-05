@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../providers/app_state.dart';
+import '../providers/finance_providers.dart';
 import '../widgets/common.dart';
 
 class StudentsScreen extends ConsumerStatefulWidget {
@@ -17,8 +17,7 @@ class _StudentsScreenState extends ConsumerState<StudentsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final controller = ref.read(appControllerProvider.notifier);
-    final students = controller.visibleStudents().where((student) {
+    final students = ref.watch(visibleStudentsProvider).where((student) {
       final needle = query.toLowerCase();
       return student.name.toLowerCase().contains(needle) ||
           student.admissionNo.toLowerCase().contains(needle) ||
@@ -54,7 +53,7 @@ class _StudentsScreenState extends ConsumerState<StudentsScreen> {
               DataColumn(label: Text('Action')),
             ],
             rows: students.map((student) {
-              final summary = controller.financeFor(student.id);
+              final summary = ref.watch(financeSummaryProvider(student.id));
               return DataRow(
                 cells: [
                   DataCell(Text(student.admissionNo)),

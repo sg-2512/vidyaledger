@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../models/models.dart';
-import '../providers/app_state.dart';
+import '../providers/finance_providers.dart';
 import '../widgets/common.dart';
 
 class DashboardScreen extends ConsumerWidget {
@@ -10,29 +9,10 @@ class DashboardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(appControllerProvider);
-    final controller = ref.read(appControllerProvider.notifier);
-    final stats = controller.dashboardStats();
-    final byClass = <String, double>{};
-    for (final student in state.students) {
-      byClass.update(
-        'Class ${student.className}',
-        (value) => value + controller.financeFor(student.id).pending,
-        ifAbsent: () => controller.financeFor(student.id).pending,
-      );
-    }
-    final modeTotals = <String, double>{};
-    for (final payment in state.payments.where((p) => p.status == PaymentStatus.completed)) {
-      modeTotals.update(
-        payment.mode.label,
-        (value) => value + payment.amount,
-        ifAbsent: () => payment.amount,
-      );
-    }
-    final defaulters = state.students
-        .where((student) => controller.financeFor(student.id).pending > 0)
-        .where((student) => controller.financeFor(student.id).overdueDays > 0)
-        .toList();
+    final stats = ref.watch(dashboardStatsProvider);
+    final byClass = ref.watch(classPendingProvider);
+    final modeTotals = ref.watch(paymentModeTotalsProvider);
+    final defaulters = ref.watch(priorityDefaultersProvider);
     final width = MediaQuery.of(context).size.width;
     final statColumns = width > 1100 ? 4 : width > 720 ? 2 : 1;
 
@@ -114,7 +94,7 @@ class DashboardScreen extends ConsumerWidget {
                     DataColumn(label: Text('Category')),
                   ],
                   rows: defaulters.map((student) {
-                    final summary = controller.financeFor(student.id);
+                    final summary = ref.watch(financeSummaryProvider(student.id));
                     return DataRow(
                       cells: [
                         DataCell(Text(student.name)),

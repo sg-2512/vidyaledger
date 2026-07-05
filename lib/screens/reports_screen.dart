@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:printing/printing.dart';
 
-import '../models/models.dart';
 import '../providers/app_state.dart';
+import '../providers/finance_providers.dart';
 import '../services/report_service.dart';
 import '../widgets/common.dart';
 
@@ -13,13 +13,9 @@ class ReportsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(appControllerProvider);
-    final stats = ref.read(appControllerProvider.notifier).dashboardStats();
-    final approved = state.concessions
-        .where((item) => item.status == ConcessionStatus.approved)
-        .length;
-    final pendingApprovals = state.concessions
-        .where((item) => item.status == ConcessionStatus.submitted)
-        .length;
+    final stats = ref.watch(dashboardStatsProvider);
+    final approved = ref.watch(approvedConcessionCountProvider);
+    final pendingApprovals = ref.watch(pendingConcessionCountProvider);
     final width = MediaQuery.of(context).size.width;
     final statColumns = width > 1100 ? 4 : width > 720 ? 2 : 1;
 
