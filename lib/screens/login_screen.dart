@@ -10,7 +10,7 @@ class LoginScreen extends ConsumerWidget {
   const LoginScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final roles = [
       UserRole.admin,
       UserRole.principal,
