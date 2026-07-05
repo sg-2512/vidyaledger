@@ -31,6 +31,19 @@ flutter pub get
 flutter run -d chrome
 ```
 
+For local Supabase mode on Windows, copy `.env.local.example` to
+`.env.local`, add your project values, then run:
+
+```powershell
+.\scripts\run-local.ps1
+```
+
+If Chrome debug connection is flaky, force a fresh local port:
+
+```powershell
+.\scripts\run-local.ps1 -WebPort 59183
+```
+
 To initialize a standard Flutter platform scaffold if needed:
 
 ```bash
