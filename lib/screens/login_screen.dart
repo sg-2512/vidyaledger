@@ -187,6 +187,7 @@ class _RolePanel extends ConsumerStatefulWidget {
 class _RolePanelState extends ConsumerState<_RolePanel> {
   final emailController = TextEditingController(text: 'admin@vidyaledger.demo');
   final passwordController = TextEditingController(text: 'VidyaLedger@2026');
+  UserRole selectedRole = UserRole.admin;
   bool loading = false;
 
   @override
@@ -207,7 +208,7 @@ class _RolePanelState extends ConsumerState<_RolePanel> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              backendEnabled ? 'Sign In To Supabase' : 'Open Demo Workspace',
+              backendEnabled ? 'Sign In To Supabase' : 'Demo Login',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w900,
                 color: const Color(0xFF111827),
@@ -216,59 +217,68 @@ class _RolePanelState extends ConsumerState<_RolePanel> {
             const SizedBox(height: 8),
             Text(
               backendEnabled
-                  ? 'Use the demo Auth users you created in Supabase. Role cards can fill the email for faster testing.'
-                  : 'Choose a role to view the same finance system through different school workflows.',
+                  ? 'Choose a role, enter the demo password, and sign in through Supabase Auth.'
+                  : 'Choose a role first, then continue into the local demo workspace.',
               style: const TextStyle(color: Color(0xFF6B7280), height: 1.4),
             ),
             const SizedBox(height: 18),
-            if (backendEnabled) ...[
-              TextField(
-                controller: emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  prefixIcon: Icon(Icons.mail_outline),
+            TextField(
+              controller: emailController,
+              enabled: backendEnabled,
+              keyboardType: TextInputType.emailAddress,
+              decoration: InputDecoration(
+                labelText: backendEnabled ? 'Email' : 'Selected demo email',
+                prefixIcon: const Icon(Icons.mail_outline),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: passwordController,
+              enabled: backendEnabled,
+              obscureText: true,
+              decoration: InputDecoration(
+                labelText: backendEnabled ? 'Password' : 'Demo password',
+                prefixIcon: const Icon(Icons.lock_outline),
+              ),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: loading
+                    ? null
+                    : backendEnabled
+                    ? _signInWithSupabase
+                    : _openDemoWorkspace,
+                icon: loading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.login),
+                label: Text(
+                  loading
+                      ? 'Signing in...'
+                      : backendEnabled
+                      ? 'Sign In'
+                      : 'Continue as ${selectedRole.label}',
                 ),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Password',
-                  prefixIcon: Icon(Icons.lock_outline),
-                ),
-              ),
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: loading ? null : _signInWithSupabase,
-                  icon: loading
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.login),
-                  label: Text(loading ? 'Signing in...' : 'Sign In'),
-                ),
-              ),
-              const SizedBox(height: 18),
-            ],
+            ),
+            const SizedBox(height: 18),
             ...widget.roles.map(
               (role) => Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: _RoleTile(
                   role: role,
                   icon: _roleIcon(role),
+                  selected: role == selectedRole,
                   onTap: () {
-                    if (backendEnabled) {
+                    setState(() {
+                      selectedRole = role;
                       emailController.text = _roleEmail(role);
-                    } else {
-                      ref.read(appControllerProvider.notifier).loginAs(role);
-                      context.go('/dashboard');
-                    }
+                    });
                   },
                 ),
               ),
@@ -290,7 +300,7 @@ class _RolePanelState extends ConsumerState<_RolePanel> {
                     child: Text(
                       backendEnabled
                           ? 'Backend mode is active. Login loads students, fees, payments, concessions, reconciliation, and audit logs from Supabase.'
-                          : 'Demo mode is active. Add Supabase dart-defines to enable real backend login.',
+                          : 'Demo mode is active because this build does not have Supabase dart-defines. It will not ask Supabase for a real password.',
                       style: const TextStyle(
                         color: Color(0xFF475569),
                         fontSize: 13,
@@ -305,6 +315,11 @@ class _RolePanelState extends ConsumerState<_RolePanel> {
         ),
       ),
     );
+  }
+
+  void _openDemoWorkspace() {
+    ref.read(appControllerProvider.notifier).loginAs(selectedRole);
+    context.go('/dashboard');
   }
 
   Future<void> _signInWithSupabase() async {
@@ -360,20 +375,24 @@ class _RoleTile extends StatelessWidget {
   const _RoleTile({
     required this.role,
     required this.icon,
+    required this.selected,
     required this.onTap,
   });
 
   final UserRole role;
   final IconData icon;
+  final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final accent = selected ? const Color(0xFF0F766E) : const Color(0xFFE2E8F0);
+
     return Material(
-      color: const Color(0xFFFFFFFF),
+      color: selected ? const Color(0xFFEFFCF9) : const Color(0xFFFFFFFF),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
-        side: const BorderSide(color: Color(0xFFE2E8F0)),
+        side: BorderSide(color: accent, width: selected ? 1.4 : 1),
       ),
       child: InkWell(
         onTap: onTap,
@@ -386,7 +405,9 @@ class _RoleTile extends StatelessWidget {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE0F2F1),
+                  color: selected
+                      ? const Color(0xFFCCFBF1)
+                      : const Color(0xFFE0F2F1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(icon, color: const Color(0xFF0F766E)),
@@ -414,7 +435,10 @@ class _RoleTile extends StatelessWidget {
                   ],
                 ),
               ),
-              const Icon(Icons.arrow_forward, color: Color(0xFF0F766E)),
+              Icon(
+                selected ? Icons.check_circle : Icons.arrow_forward,
+                color: const Color(0xFF0F766E),
+              ),
             ],
           ),
         ),
