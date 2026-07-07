@@ -74,6 +74,7 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
             final receipts = _ReceiptRegister(
               students: state.students,
               payments: state.payments,
+              school: state.school,
             );
 
             return stacked
@@ -358,10 +359,15 @@ class _PaymentForm extends StatelessWidget {
 }
 
 class _ReceiptRegister extends ConsumerWidget {
-  const _ReceiptRegister({required this.students, required this.payments});
+  const _ReceiptRegister({
+    required this.students,
+    required this.payments,
+    required this.school,
+  });
 
   final List<Student> students;
   final List<Payment> payments;
+  final SchoolProfile school;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -411,6 +417,7 @@ class _ReceiptRegister extends ConsumerWidget {
                     payment: payment,
                     student: student,
                     summary: summary,
+                    school: school,
                   );
                   await Printing.sharePdf(
                     bytes: bytes,

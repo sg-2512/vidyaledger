@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../models/models.dart';
 import '../providers/app_state.dart';
 import '../providers/supabase_providers.dart';
+import '../security/role_access.dart';
 
 class ShellScreen extends ConsumerWidget {
   const ShellScreen({required this.child, super.key});
@@ -27,7 +28,7 @@ class ShellScreen extends ConsumerWidget {
       _NavItem('Payments', Icons.payments_outlined, '/payments'),
       _NavItem('Reconciliation', Icons.fact_check_outlined, '/reconciliation'),
       _NavItem('Reports', Icons.picture_as_pdf_outlined, '/reports'),
-    ];
+    ].where((item) => canAccessRoute(user.role, item.path)).toList();
 
     Future<void> logout() async {
       final service = ref.read(supabaseFinanceServiceProvider);
@@ -60,6 +61,7 @@ class ShellScreen extends ConsumerWidget {
                 child: _NavigationPanel(
                   userName: user.name,
                   roleLabel: user.role.label,
+                  school: state.school,
                   navItems: navItems,
                   onLogout: logout,
                 ),
@@ -80,6 +82,7 @@ class ShellScreen extends ConsumerWidget {
                 child: _NavigationPanel(
                   userName: user.name,
                   roleLabel: user.role.label,
+                  school: state.school,
                   navItems: navItems,
                   onLogout: logout,
                 ),
@@ -91,6 +94,7 @@ class ShellScreen extends ConsumerWidget {
                       _TopBar(
                         userName: user.name,
                         roleLabel: user.role.label,
+                        school: state.school,
                         onLogout: logout,
                       ),
                       Expanded(
@@ -115,11 +119,13 @@ class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.userName,
     required this.roleLabel,
+    required this.school,
     required this.onLogout,
   });
 
   final String userName;
   final String roleLabel;
+  final SchoolProfile school;
   final VoidCallback onLogout;
 
   @override
@@ -139,16 +145,16 @@ class _TopBar extends StatelessWidget {
             children: [
               const Icon(Icons.school_outlined, color: Color(0xFF0F766E)),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'VidyaLedger Demo School',
+                      school.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
+                      style: const TextStyle(
                         color: Color(0xFF111827),
                         fontWeight: FontWeight.w900,
                         fontSize: 16,
@@ -156,10 +162,13 @@ class _TopBar extends StatelessWidget {
                     ),
                     SizedBox(height: 2),
                     Text(
-                      'Academic year 2026-27 finance workspace',
+                      '${school.board} | ${school.locationLabel} | AY ${school.academicYear}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                      style: const TextStyle(
+                        color: Color(0xFF64748B),
+                        fontSize: 12,
+                      ),
                     ),
                   ],
                 ),
@@ -254,12 +263,14 @@ class _NavigationPanel extends StatelessWidget {
   const _NavigationPanel({
     required this.userName,
     required this.roleLabel,
+    required this.school,
     required this.navItems,
     required this.onLogout,
   });
 
   final String userName;
   final String roleLabel;
+  final SchoolProfile school;
   final List<_NavItem> navItems;
   final VoidCallback onLogout;
 
@@ -289,11 +300,11 @@ class _NavigationPanel extends StatelessWidget {
                   child: const Icon(Icons.account_balance, color: Colors.white),
                 ),
                 const SizedBox(width: 12),
-                const Expanded(
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      const Text(
                         'VidyaLedger',
                         style: TextStyle(
                           color: Color(0xFF111827),
@@ -303,8 +314,8 @@ class _NavigationPanel extends StatelessWidget {
                       ),
                       SizedBox(height: 2),
                       Text(
-                        'School FinTech',
-                        style: TextStyle(color: Color(0xFF64748B)),
+                        'AY ${school.academicYear}',
+                        style: const TextStyle(color: Color(0xFF64748B)),
                       ),
                     ],
                   ),

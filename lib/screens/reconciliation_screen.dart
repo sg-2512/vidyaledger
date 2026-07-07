@@ -3,13 +3,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/models.dart';
 import '../providers/app_state.dart';
+import '../providers/supabase_providers.dart';
 import '../widgets/common.dart';
 
-class ReconciliationScreen extends ConsumerWidget {
+class ReconciliationScreen extends ConsumerStatefulWidget {
   const ReconciliationScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ReconciliationScreen> createState() =>
+      _ReconciliationScreenState();
+}
+
+class _ReconciliationScreenState extends ConsumerState<ReconciliationScreen> {
+  String? updatingItemId;
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -30,11 +39,12 @@ class ReconciliationScreen extends ConsumerWidget {
               DataColumn(label: Text('Action')),
             ],
             rows: state.reconciliationItems.map((item) {
-              final payment = state.payments.firstWhere((pay) => pay.id == item.paymentId);
+              final payment = _paymentFor(state, item.paymentId);
+              final updating = updatingItemId == item.id;
               return DataRow(cells: [
-                DataCell(Text(payment.receiptNo)),
+                DataCell(Text(payment?.receiptNo ?? 'Missing payment')),
                 DataCell(Text(item.channelRef)),
-                DataCell(Text(moneyFormat.format(payment.amount))),
+                DataCell(Text(moneyFormat.format(payment?.amount ?? 0))),
                 DataCell(StatusPill(label: item.status.label, color: statusColor(item.status.label))),
                 DataCell(Text(item.exceptionReason.isEmpty ? '-' : item.exceptionReason)),
                 DataCell(
@@ -42,27 +52,33 @@ class ReconciliationScreen extends ConsumerWidget {
                     spacing: 4,
                     children: [
                       TextButton(
-                        onPressed: () => ref.read(appControllerProvider.notifier).updateReconciliation(
-                              item.id,
-                              ReconciliationStatus.matched,
-                              '',
-                            ),
-                        child: const Text('Match'),
+                        onPressed: updating
+                            ? null
+                            : () => _updateReconciliation(
+                                  item.id,
+                                  ReconciliationStatus.matched,
+                                  '',
+                                ),
+                        child: Text(updating ? 'Saving' : 'Match'),
                       ),
                       TextButton(
-                        onPressed: () => ref.read(appControllerProvider.notifier).updateReconciliation(
-                              item.id,
-                              ReconciliationStatus.duplicate,
-                              'Possible duplicate settlement',
-                            ),
+                        onPressed: updating
+                            ? null
+                            : () => _updateReconciliation(
+                                  item.id,
+                                  ReconciliationStatus.duplicate,
+                                  'Possible duplicate settlement',
+                                ),
                         child: const Text('Duplicate'),
                       ),
                       TextButton(
-                        onPressed: () => ref.read(appControllerProvider.notifier).updateReconciliation(
-                              item.id,
-                              ReconciliationStatus.partial,
-                              'Amount mismatch needs accountant review',
-                            ),
+                        onPressed: updating
+                            ? null
+                            : () => _updateReconciliation(
+                                  item.id,
+                                  ReconciliationStatus.partial,
+                                  'Amount mismatch needs accountant review',
+                                ),
                         child: const Text('Partial'),
                       ),
                     ],
@@ -74,5 +90,60 @@ class ReconciliationScreen extends ConsumerWidget {
         ),
       ],
     );
+  }
+
+  Future<void> _updateReconciliation(
+    String itemId,
+    ReconciliationStatus status,
+    String reason,
+  ) async {
+    if (updatingItemId != null) return;
+
+    setState(() => updatingItemId = itemId);
+    try {
+      final service = ref.read(supabaseFinanceServiceProvider);
+      if (service == null) {
+        ref
+            .read(appControllerProvider.notifier)
+            .updateReconciliation(itemId, status, reason);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Demo reconciliation marked ${status.label}.')),
+        );
+        return;
+      }
+
+      await service.updateReconciliation(
+        reconciliationId: itemId,
+        status: status,
+        reason: reason,
+      );
+      await refreshAppStateFromSupabase(
+        ref,
+        currentUser: ref.read(appControllerProvider).currentUser,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Backend reconciliation marked ${status.label.toLowerCase()}.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Reconciliation update failed: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => updatingItemId = null);
+    }
+  }
+
+  Payment? _paymentFor(AppState state, String paymentId) {
+    for (final payment in state.payments) {
+      if (payment.id == paymentId) return payment;
+    }
+    return null;
   }
 }

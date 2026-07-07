@@ -12,49 +12,71 @@ enum ReconciliationStatus { unmatched, matched, duplicate, partial, overpaid }
 
 extension UserRoleLabel on UserRole {
   String get label => switch (this) {
-        UserRole.admin => 'Admin',
-        UserRole.principal => 'Principal',
-        UserRole.accountant => 'Accountant',
-        UserRole.clerk => 'Fee Clerk',
-        UserRole.parent => 'Parent',
-      };
+    UserRole.admin => 'Admin',
+    UserRole.principal => 'Principal',
+    UserRole.accountant => 'Accountant',
+    UserRole.clerk => 'Fee Clerk',
+    UserRole.parent => 'Parent',
+  };
 }
 
 extension PaymentModeLabel on PaymentMode {
   String get label => switch (this) {
-        PaymentMode.upi => 'UPI',
-        PaymentMode.cash => 'Cash',
-        PaymentMode.cheque => 'Cheque',
-        PaymentMode.bankTransfer => 'Bank Transfer',
-      };
+    PaymentMode.upi => 'UPI',
+    PaymentMode.cash => 'Cash',
+    PaymentMode.cheque => 'Cheque',
+    PaymentMode.bankTransfer => 'Bank Transfer',
+  };
 }
 
 extension PaymentStatusLabel on PaymentStatus {
   String get label => switch (this) {
-        PaymentStatus.pending => 'Pending',
-        PaymentStatus.completed => 'Completed',
-        PaymentStatus.bounced => 'Bounced',
-        PaymentStatus.reversed => 'Reversed',
-      };
+    PaymentStatus.pending => 'Pending',
+    PaymentStatus.completed => 'Completed',
+    PaymentStatus.bounced => 'Bounced',
+    PaymentStatus.reversed => 'Reversed',
+  };
 }
 
 extension ConcessionStatusLabel on ConcessionStatus {
   String get label => switch (this) {
-        ConcessionStatus.draft => 'Draft',
-        ConcessionStatus.submitted => 'Submitted',
-        ConcessionStatus.approved => 'Approved',
-        ConcessionStatus.rejected => 'Rejected',
-      };
+    ConcessionStatus.draft => 'Draft',
+    ConcessionStatus.submitted => 'Submitted',
+    ConcessionStatus.approved => 'Approved',
+    ConcessionStatus.rejected => 'Rejected',
+  };
 }
 
 extension ReconciliationStatusLabel on ReconciliationStatus {
   String get label => switch (this) {
-        ReconciliationStatus.unmatched => 'Unmatched',
-        ReconciliationStatus.matched => 'Matched',
-        ReconciliationStatus.duplicate => 'Duplicate',
-        ReconciliationStatus.partial => 'Partial',
-        ReconciliationStatus.overpaid => 'Overpaid',
-      };
+    ReconciliationStatus.unmatched => 'Unmatched',
+    ReconciliationStatus.matched => 'Matched',
+    ReconciliationStatus.duplicate => 'Duplicate',
+    ReconciliationStatus.partial => 'Partial',
+    ReconciliationStatus.overpaid => 'Overpaid',
+  };
+}
+
+class SchoolProfile {
+  const SchoolProfile({
+    required this.id,
+    required this.name,
+    required this.board,
+    required this.state,
+    required this.district,
+    required this.schoolType,
+    required this.academicYear,
+  });
+
+  final String id;
+  final String name;
+  final String board;
+  final String state;
+  final String district;
+  final String schoolType;
+  final String academicYear;
+
+  String get locationLabel => '$district, $state';
 }
 
 class AppUser {
@@ -196,10 +218,7 @@ class Concession {
   final DateTime createdAt;
   final String? approvedBy;
 
-  Concession copyWith({
-    ConcessionStatus? status,
-    String? approvedBy,
-  }) {
+  Concession copyWith({ConcessionStatus? status, String? approvedBy}) {
     return Concession(
       id: id,
       studentId: studentId,

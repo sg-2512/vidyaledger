@@ -9,6 +9,7 @@ final appControllerProvider = NotifierProvider<AppController, AppState>(
 class AppState {
   const AppState({
     required this.currentUser,
+    required this.school,
     required this.users,
     required this.guardians,
     required this.students,
@@ -22,6 +23,7 @@ class AppState {
   });
 
   final AppUser? currentUser;
+  final SchoolProfile school;
   final List<AppUser> users;
   final List<Guardian> guardians;
   final List<Student> students;
@@ -35,6 +37,15 @@ class AppState {
 
   factory AppState.seeded() {
     final now = DateTime.now();
+    const school = SchoolProfile(
+      id: 'school-1',
+      name: 'Vidya Public School',
+      board: 'CBSE',
+      state: 'Rajasthan',
+      district: 'Jaipur',
+      schoolType: 'Unaided Private School',
+      academicYear: '2026-27',
+    );
     final guardians = [
       const Guardian(
         id: 'g-1',
@@ -221,6 +232,7 @@ class AppState {
     ];
     return AppState(
       currentUser: null,
+      school: school,
       users: const [
         AppUser(
           id: 'u-admin',
@@ -333,7 +345,11 @@ class AppState {
 
   AppState copyWith({
     AppUser? currentUser,
+    SchoolProfile? school,
     bool clearCurrentUser = false,
+    List<AppUser>? users,
+    List<Guardian>? guardians,
+    List<Student>? students,
     List<FeeHead>? feeHeads,
     List<FeeRule>? feeRules,
     List<FeeDemand>? feeDemands,
@@ -344,9 +360,10 @@ class AppState {
   }) {
     return AppState(
       currentUser: clearCurrentUser ? null : currentUser ?? this.currentUser,
-      users: users,
-      guardians: guardians,
-      students: students,
+      school: school ?? this.school,
+      users: users ?? this.users,
+      guardians: guardians ?? this.guardians,
+      students: students ?? this.students,
       feeHeads: feeHeads ?? this.feeHeads,
       feeRules: feeRules ?? this.feeRules,
       feeDemands: feeDemands ?? this.feeDemands,
@@ -386,6 +403,43 @@ class AppController extends Notifier<AppState> {
     );
     state = state.copyWith(feeHeads: [...state.feeHeads, feeHead]);
     _audit('Created fee head $name', 'fee_head');
+  }
+
+  void addStudentWithGuardian({
+    required String admissionNo,
+    required String studentName,
+    required String className,
+    required String section,
+    required String category,
+    required String studentPhone,
+    required String guardianName,
+    required String guardianPhone,
+    required String guardianEmail,
+    required String guardianAddress,
+  }) {
+    final guardian = Guardian(
+      id: _id('g'),
+      name: guardianName,
+      phone: guardianPhone,
+      email: guardianEmail,
+      address: guardianAddress,
+    );
+    final student = Student(
+      id: _id('s'),
+      admissionNo: admissionNo,
+      name: studentName,
+      className: className,
+      section: section,
+      guardianId: guardian.id,
+      category: category,
+      phone: studentPhone,
+      status: 'active',
+    );
+    state = state.copyWith(
+      guardians: [...state.guardians, guardian],
+      students: [...state.students, student],
+    );
+    _audit('Added student $studentName ($admissionNo)', 'student');
   }
 
   void generateFeeDemand({

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../providers/app_state.dart';
+import '../providers/supabase_providers.dart';
 import '../widgets/common.dart';
 
 class FeeEngineScreen extends ConsumerStatefulWidget {
@@ -18,6 +19,7 @@ class _FeeEngineScreenState extends ConsumerState<FeeEngineScreen> {
   final lateFeeController = TextEditingController(text: '500');
   String selectedClass = '7';
   String? selectedFeeHeadId;
+  bool generating = false;
 
   @override
   void dispose() {
@@ -30,8 +32,17 @@ class _FeeEngineScreenState extends ConsumerState<FeeEngineScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
-    selectedFeeHeadId ??= state.feeHeads.first.id;
-    final classNames = state.students.map((student) => student.className).toSet().toList()..sort();
+    final classNames = state.students
+        .map((student) => student.className)
+        .toSet()
+        .toList()
+      ..sort();
+    if (state.feeHeads.isNotEmpty && selectedFeeHeadId == null) {
+      selectedFeeHeadId = state.feeHeads.first.id;
+    }
+    if (classNames.isNotEmpty && !classNames.contains(selectedClass)) {
+      selectedClass = classNames.first;
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -87,21 +98,24 @@ class _FeeEngineScreenState extends ConsumerState<FeeEngineScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
-                        onPressed: () {
-                          ref.read(appControllerProvider.notifier).generateFeeDemand(
-                                feeHeadId: selectedFeeHeadId!,
-                                title: titleController.text.trim(),
-                                amount: double.tryParse(amountController.text) ?? 0,
-                                className: selectedClass,
-                                dueDate: DateTime.now().add(const Duration(days: 14)),
-                                lateFeeAmount: double.tryParse(lateFeeController.text) ?? 0,
-                              );
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Fee demand generated.')),
-                          );
-                        },
-                        icon: const Icon(Icons.add),
-                        label: const Text('Generate Demand'),
+                        onPressed: generating ||
+                                selectedFeeHeadId == null ||
+                                classNames.isEmpty
+                            ? null
+                            : _generateFeeDemand,
+                        icon: generating
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.add),
+                        label: Text(
+                          generating ? 'Generating...' : 'Generate Demand',
+                        ),
                       ),
                     ),
                   ],
@@ -153,5 +167,72 @@ class _FeeEngineScreenState extends ConsumerState<FeeEngineScreen> {
         ),
       ],
     );
+  }
+
+  Future<void> _generateFeeDemand() async {
+    final feeHeadId = selectedFeeHeadId;
+    if (feeHeadId == null || generating) return;
+
+    final title = titleController.text.trim();
+    final amount = double.tryParse(amountController.text) ?? 0;
+    final lateFeeAmount = double.tryParse(lateFeeController.text) ?? 0;
+    final dueDate = DateTime.now().add(const Duration(days: 14));
+
+    if (title.isEmpty || amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter a fee title and an amount greater than zero.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() => generating = true);
+    try {
+      final service = ref.read(supabaseFinanceServiceProvider);
+      if (service == null) {
+        ref.read(appControllerProvider.notifier).generateFeeDemand(
+              feeHeadId: feeHeadId,
+              title: title,
+              amount: amount,
+              className: selectedClass,
+              dueDate: dueDate,
+              lateFeeAmount: lateFeeAmount,
+            );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Demo fee demand generated.')),
+        );
+        return;
+      }
+
+      final demandCount = await service.generateFeeDemand(
+        feeHeadId: feeHeadId,
+        title: title,
+        amount: amount,
+        className: selectedClass,
+        dueDate: dueDate,
+        lateFeeAmount: lateFeeAmount,
+      );
+      await refreshAppStateFromSupabase(
+        ref,
+        currentUser: ref.read(appControllerProvider).currentUser,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Backend fee demand generated for $demandCount students.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Fee generation failed: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => generating = false);
+    }
   }
 }

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../models/models.dart';
 import '../providers/app_state.dart';
 import '../providers/supabase_providers.dart';
+import '../security/role_access.dart';
 
 class LoginScreen extends ConsumerWidget {
   const LoginScreen({super.key});
@@ -327,7 +328,7 @@ class _RolePanelState extends ConsumerState<_RolePanel> {
 
   void _openDemoWorkspace() {
     ref.read(appControllerProvider.notifier).loginAs(selectedRole);
-    context.go('/dashboard');
+    context.go(defaultRouteForRole(selectedRole));
   }
 
   Future<void> _signInWithSupabase() async {
@@ -350,7 +351,7 @@ class _RolePanelState extends ConsumerState<_RolePanel> {
           content: Text('Signed in as ${user?.name ?? 'Supabase user'}'),
         ),
       );
-      context.go('/dashboard');
+      context.go(defaultRouteForRole(user?.role ?? selectedRole));
     } catch (error) {
       if (!mounted) return;
       final message = _friendlyLoginError(error);

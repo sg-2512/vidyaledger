@@ -61,6 +61,33 @@ supabase/schema.sql
 supabase/seed.sql
 ```
 
+For a larger judge/demo database, run this optional file after the base seed:
+
+```text
+supabase/seed_verification_data.sql
+```
+
+It expands the dataset to at least 50 students and adds extra fee demands,
+concessions, payments, receipts, reconciliation rows, ledger entries, and an
+audit log entry. The final query returns row counts so you can verify the load
+inside Supabase SQL Editor.
+
+For existing Supabase projects, also run:
+
+```text
+supabase/upgrade_receipt_numbering.sql
+supabase/upgrade_fee_generation.sql
+supabase/upgrade_concession_workflow.sql
+supabase/upgrade_reconciliation_workflow.sql
+supabase/upgrade_student_register.sql
+```
+
+This adds database-issued receipt numbers, payment idempotency keys, atomic
+receipt creation, persisted fee generation, concession approvals,
+reconciliation rows, ledger posting, and audit logs for new payments, fee
+demands, concessions, reconciliation decisions, and student-register additions
+recorded from the app.
+
 Then start with credentials:
 
 ```bash
@@ -78,6 +105,20 @@ In demo mode, use the role buttons on the login screen. In Supabase mode, use th
 - `accounts@vidyaledger.demo`
 - `clerk@vidyaledger.demo`
 - `parent@vidyaledger.demo`
+
+Role access is enforced in the Flutter UI:
+
+- Admin, principal, and accountant can use finance configuration, concessions, reconciliation, and reports.
+- Fee clerk can use student lookup and payment collection.
+- Parent can only view linked student fee details and receipts.
+
+The student register supports class, section, and category filters, complete
+student-detail PDF export, and staff-only student creation inside the signed-in
+school tenant.
+
+In Supabase mode, the app also loads the signed-in school's profile from the
+`schools` table and uses it in the workspace header and exported PDFs, so each
+school sees its own name, board, location, and academic year.
 
 ## Core Demo Flow
 

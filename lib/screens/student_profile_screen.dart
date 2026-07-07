@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../models/models.dart';
@@ -15,8 +16,15 @@ class StudentProfileScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(appControllerProvider);
-    final student = state.students.firstWhere((item) => item.id == studentId);
-    final guardian = state.guardians.firstWhere((item) => item.id == student.guardianId);
+    final user = state.currentUser;
+    final student = _studentFor(state, studentId);
+    if (student == null ||
+        (user?.role == UserRole.parent &&
+            student.guardianId != user?.guardianId)) {
+      return const _StudentAccessDenied();
+    }
+
+    final guardian = _guardianFor(state, student.guardianId);
     final summary = ref.watch(financeSummaryProvider(student.id));
     final demands = state.feeDemands.where((item) => item.studentId == student.id).toList();
     final concessions = state.concessions.where((item) => item.studentId == student.id).toList();
@@ -29,7 +37,8 @@ class StudentProfileScreen extends ConsumerWidget {
       children: [
         PageHeader(
           title: student.name,
-          subtitle: '${student.admissionNo} | Class ${student.classLabel} | Guardian: ${guardian.name}',
+          subtitle:
+              '${student.admissionNo} | Class ${student.classLabel} | Guardian: ${guardian?.name ?? 'Not linked'}',
         ),
         GridView.count(
           crossAxisCount: statColumns,
@@ -131,6 +140,72 @@ class StudentProfileScreen extends ConsumerWidget {
           ],
         ),
       ],
+    );
+  }
+
+  Student? _studentFor(AppState state, String studentId) {
+    for (final student in state.students) {
+      if (student.id == studentId) return student;
+    }
+    return null;
+  }
+
+  Guardian? _guardianFor(AppState state, String guardianId) {
+    for (final guardian in state.guardians) {
+      if (guardian.id == guardianId) return guardian;
+    }
+    return null;
+  }
+}
+
+class _StudentAccessDenied extends StatelessWidget {
+  const _StudentAccessDenied();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.lock_outline,
+                color: Color(0xFFC2410C),
+                size: 36,
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'Student access limited',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF111827),
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Parent accounts can only view fee details for their linked child.',
+                style: TextStyle(color: Color(0xFF64748B), height: 1.5),
+              ),
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                onPressed: () => context.go('/students'),
+                icon: const Icon(Icons.arrow_back),
+                label: const Text('Back to students'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

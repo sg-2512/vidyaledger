@@ -5,6 +5,7 @@ import '../providers/app_state.dart';
 
 class FinanceSnapshot {
   const FinanceSnapshot({
+    required this.school,
     required this.users,
     required this.guardians,
     required this.students,
@@ -17,6 +18,7 @@ class FinanceSnapshot {
     required this.auditLogs,
   });
 
+  final SchoolProfile school;
   final List<AppUser> users;
   final List<Guardian> guardians;
   final List<Student> students;
@@ -31,6 +33,7 @@ class FinanceSnapshot {
   AppState toAppState({AppUser? currentUser}) {
     return AppState(
       currentUser: currentUser,
+      school: school,
       users: users,
       guardians: guardians,
       students: students,
@@ -67,6 +70,7 @@ class SupabaseFinanceService {
 
   Future<FinanceSnapshot> loadSnapshot() async {
     final results = await Future.wait<List<Map<String, dynamic>>>([
+      _selectTable('schools'),
       _selectTable('users', orderBy: 'name'),
       _selectTable('guardians', orderBy: 'name'),
       _selectTable('students', orderBy: 'admission_no'),
@@ -80,16 +84,19 @@ class SupabaseFinanceService {
     ]);
 
     return FinanceSnapshot(
-      users: results[0].map(_userFromRow).toList(),
-      guardians: results[1].map(_guardianFromRow).toList(),
-      students: results[2].map(_studentFromRow).toList(),
-      feeHeads: results[3].map(_feeHeadFromRow).toList(),
-      feeRules: results[4].map(_feeRuleFromRow).toList(),
-      feeDemands: results[5].map(_feeDemandFromRow).toList(),
-      concessions: results[6].map(_concessionFromRow).toList(),
-      payments: results[7].map(_paymentFromRow).toList(),
-      reconciliationItems: results[8].map(_reconciliationFromRow).toList(),
-      auditLogs: results[9].map(_auditLogFromRow).toList(),
+      school: results[0].isEmpty
+          ? AppState.seeded().school
+          : _schoolFromRow(results[0].first),
+      users: results[1].map(_userFromRow).toList(),
+      guardians: results[2].map(_guardianFromRow).toList(),
+      students: results[3].map(_studentFromRow).toList(),
+      feeHeads: results[4].map(_feeHeadFromRow).toList(),
+      feeRules: results[5].map(_feeRuleFromRow).toList(),
+      feeDemands: results[6].map(_feeDemandFromRow).toList(),
+      concessions: results[7].map(_concessionFromRow).toList(),
+      payments: results[8].map(_paymentFromRow).toList(),
+      reconciliationItems: results[9].map(_reconciliationFromRow).toList(),
+      auditLogs: results[10].map(_auditLogFromRow).toList(),
     );
   }
 
@@ -100,57 +107,128 @@ class SupabaseFinanceService {
     required String referenceNo,
     required String note,
   }) async {
-    final userRow = await _currentUserRow();
-    final schoolId = userRow['school_id'].toString();
-    final existingPayments = await _selectTable('payments');
-    final receiptNo =
-        'VL/2026/${(existingPayments.length + 1).toString().padLeft(4, '0')}';
-    final paymentStatus = mode == PaymentMode.cheque
-        ? PaymentStatus.pending
-        : PaymentStatus.completed;
-    final chequeStatus = mode == PaymentMode.cheque
-        ? ChequeStatus.received
-        : null;
-
-    final inserted = await client
-        .from('payments')
-        .insert({
-          'school_id': schoolId,
-          'student_id': studentId,
-          'amount': amount,
-          'mode': _paymentModeDb(mode),
-          'status': _paymentStatusDb(paymentStatus),
-          'cheque_status': chequeStatus == null
-              ? null
-              : _chequeStatusDb(chequeStatus),
-          'reference_no': referenceNo,
-          'receipt_no': receiptNo,
-          'note': note,
-        })
-        .select()
-        .single();
-    final payment = _paymentFromRow(Map<String, dynamic>.from(inserted as Map));
-
-    await client.from('receipts').insert({
-      'school_id': schoolId,
-      'payment_id': payment.id,
-      'receipt_no': receiptNo,
-    });
-
-    await _tryInsertReconciliation(
-      schoolId: schoolId,
-      paymentId: payment.id,
-      referenceNo: referenceNo,
-      mode: mode,
+    final data = await client.rpc(
+      'record_payment_with_receipt',
+      params: {
+        'p_student_id': studentId,
+        'p_amount': amount,
+        'p_mode': _paymentModeDb(mode),
+        'p_reference_no': referenceNo,
+        'p_note': note,
+        'p_idempotency_key': _paymentIdempotencyKey(
+          studentId: studentId,
+          amount: amount,
+          mode: mode,
+          referenceNo: referenceNo,
+        ),
+      },
     );
-    await _insertAuditLog(
-      userRow: userRow,
-      action: 'Recorded ${mode.label} payment $receiptNo',
-      objectType: 'payment',
-      objectId: payment.id,
-    );
+    return _paymentFromRow(_singleRowFromRpc(data));
+  }
 
-    return payment;
+  Future<int> generateFeeDemand({
+    required String feeHeadId,
+    required String title,
+    required double amount,
+    required String className,
+    required DateTime dueDate,
+    required double lateFeeAmount,
+  }) async {
+    final data = await client.rpc(
+      'generate_fee_demand_for_class',
+      params: {
+        'p_fee_head_id': feeHeadId,
+        'p_title': title,
+        'p_amount': amount,
+        'p_class_name': className,
+        'p_due_date': _dateOnly(dueDate),
+        'p_late_fee_amount': lateFeeAmount,
+        'p_frequency': 'Term',
+      },
+    );
+    return _toInt(_singleRowFromRpc(data)['demand_count']);
+  }
+
+  Future<Student> addStudentWithGuardian({
+    required String admissionNo,
+    required String studentName,
+    required String className,
+    required String section,
+    required String category,
+    required String studentPhone,
+    required String guardianName,
+    required String guardianPhone,
+    required String guardianEmail,
+    required String guardianAddress,
+  }) async {
+    final data = await client.rpc(
+      'create_student_with_guardian',
+      params: {
+        'p_admission_no': admissionNo,
+        'p_student_name': studentName,
+        'p_class_name': className,
+        'p_section': section,
+        'p_category': category,
+        'p_student_phone': studentPhone,
+        'p_guardian_name': guardianName,
+        'p_guardian_phone': guardianPhone,
+        'p_guardian_email': guardianEmail,
+        'p_guardian_address': guardianAddress,
+      },
+    );
+    return _studentFromRow(_singleRowFromRpc(data));
+  }
+
+  Future<Concession> submitConcession({
+    required String studentId,
+    required String category,
+    required String concessionType,
+    required double amount,
+    required String fundingSource,
+    required String reason,
+  }) async {
+    final data = await client.rpc(
+      'submit_concession_request',
+      params: {
+        'p_student_id': studentId,
+        'p_category': category,
+        'p_concession_type': concessionType,
+        'p_amount': amount,
+        'p_funding_source': fundingSource,
+        'p_reason': reason,
+      },
+    );
+    return _concessionFromRow(_singleRowFromRpc(data));
+  }
+
+  Future<Concession> updateConcessionStatus(
+    String concessionId,
+    ConcessionStatus status,
+  ) async {
+    final data = await client.rpc(
+      'update_concession_decision',
+      params: {
+        'p_concession_id': concessionId,
+        'p_status': _concessionStatusDb(status),
+      },
+    );
+    return _concessionFromRow(_singleRowFromRpc(data));
+  }
+
+  Future<ReconciliationItem> updateReconciliation({
+    required String reconciliationId,
+    required ReconciliationStatus status,
+    required String reason,
+  }) async {
+    final data = await client.rpc(
+      'update_reconciliation_status',
+      params: {
+        'p_reconciliation_id': reconciliationId,
+        'p_status': _reconciliationStatusDb(status),
+        'p_exception_reason': reason,
+      },
+    );
+    return _reconciliationFromRow(_singleRowFromRpc(data));
   }
 
   Future<Payment> updateChequeStatus(
@@ -209,27 +287,6 @@ class SupabaseFinanceService {
     return Map<String, dynamic>.from(row as Map);
   }
 
-  Future<void> _tryInsertReconciliation({
-    required String schoolId,
-    required String paymentId,
-    required String referenceNo,
-    required PaymentMode mode,
-  }) async {
-    try {
-      await client.from('reconciliation_items').insert({
-        'school_id': schoolId,
-        'payment_id': paymentId,
-        'channel_ref': referenceNo,
-        'status': mode == PaymentMode.cash ? 'matched' : 'unmatched',
-        'exception_reason': mode == PaymentMode.cash
-            ? ''
-            : 'Pending settlement verification',
-      });
-    } catch (_) {
-      // Fee clerks can collect payments but may not have reconciliation rights.
-    }
-  }
-
   Future<void> _insertAuditLog({
     required Map<String, dynamic> userRow,
     required String action,
@@ -254,6 +311,28 @@ class SupabaseFinanceService {
       role: _userRole(row['role']?.toString()),
       guardianId: row['guardian_id']?.toString(),
     );
+  }
+
+  SchoolProfile _schoolFromRow(Map<String, dynamic> row) {
+    return SchoolProfile(
+      id: row['id'].toString(),
+      name: row['name']?.toString() ?? 'School',
+      board: row['board']?.toString() ?? '',
+      state: row['state']?.toString() ?? '',
+      district: row['district']?.toString() ?? '',
+      schoolType: row['school_type']?.toString() ?? '',
+      academicYear: row['academic_year']?.toString() ?? '',
+    );
+  }
+
+  Map<String, dynamic> _singleRowFromRpc(dynamic data) {
+    if (data is Map) {
+      return Map<String, dynamic>.from(data);
+    }
+    if (data is List && data.isNotEmpty && data.first is Map) {
+      return Map<String, dynamic>.from(data.first as Map);
+    }
+    throw StateError('Supabase did not return a payment row.');
   }
 
   Guardian _guardianFromRow(Map<String, dynamic> row) {
@@ -430,6 +509,24 @@ class SupabaseFinanceService {
     };
   }
 
+  String _paymentIdempotencyKey({
+    required String studentId,
+    required double amount,
+    required PaymentMode mode,
+    required String referenceNo,
+  }) {
+    final normalizedReference = referenceNo.trim().isEmpty
+        ? 'no-reference-${DateTime.now().microsecondsSinceEpoch}'
+        : referenceNo.trim().toLowerCase();
+    return [
+      'manual-payment',
+      studentId,
+      _paymentModeDb(mode),
+      amount.toStringAsFixed(2),
+      normalizedReference,
+    ].join(':');
+  }
+
   String _paymentStatusDb(PaymentStatus value) {
     return switch (value) {
       PaymentStatus.pending => 'pending',
@@ -448,9 +545,39 @@ class SupabaseFinanceService {
     };
   }
 
+  String _concessionStatusDb(ConcessionStatus value) {
+    return switch (value) {
+      ConcessionStatus.draft => 'draft',
+      ConcessionStatus.submitted => 'submitted',
+      ConcessionStatus.approved => 'approved',
+      ConcessionStatus.rejected => 'rejected',
+    };
+  }
+
+  String _reconciliationStatusDb(ReconciliationStatus value) {
+    return switch (value) {
+      ReconciliationStatus.unmatched => 'unmatched',
+      ReconciliationStatus.matched => 'matched',
+      ReconciliationStatus.duplicate => 'duplicate',
+      ReconciliationStatus.partial => 'partial',
+      ReconciliationStatus.overpaid => 'overpaid',
+    };
+  }
+
   double _toDouble(dynamic value) {
     if (value is num) return value.toDouble();
     return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  int _toInt(dynamic value) {
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  String _dateOnly(DateTime value) {
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    return '${value.year}-$month-$day';
   }
 
   DateTime _toDate(dynamic value) {

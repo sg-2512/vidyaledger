@@ -10,6 +10,7 @@ import '../screens/reports_screen.dart';
 import '../screens/shell_screen.dart';
 import '../screens/student_profile_screen.dart';
 import '../screens/students_screen.dart';
+import '../widgets/role_gate.dart';
 
 final appRouter = GoRouter(
   initialLocation: '/login',
@@ -23,39 +24,63 @@ final appRouter = GoRouter(
       routes: [
         GoRoute(
           path: '/dashboard',
-          builder: (context, state) => const DashboardScreen(),
+          builder: (context, state) => const RoleGate(
+            path: '/dashboard',
+            child: DashboardScreen(),
+          ),
         ),
         GoRoute(
           path: '/students',
-          builder: (context, state) => const StudentsScreen(),
+          builder: (context, state) => const RoleGate(
+            path: '/students',
+            child: StudentsScreen(),
+          ),
           routes: [
             GoRoute(
               path: ':id',
-              builder: (context, state) => StudentProfileScreen(
-                studentId: state.pathParameters['id']!,
+              builder: (context, state) => RoleGate(
+                path: '/students/${state.pathParameters['id']!}',
+                child: StudentProfileScreen(
+                  studentId: state.pathParameters['id']!,
+                ),
               ),
             ),
           ],
         ),
         GoRoute(
           path: '/fees',
-          builder: (context, state) => const FeeEngineScreen(),
+          builder: (context, state) => const RoleGate(
+            path: '/fees',
+            child: FeeEngineScreen(),
+          ),
         ),
         GoRoute(
           path: '/concessions',
-          builder: (context, state) => const ConcessionsScreen(),
+          builder: (context, state) => const RoleGate(
+            path: '/concessions',
+            child: ConcessionsScreen(),
+          ),
         ),
         GoRoute(
           path: '/payments',
-          builder: (context, state) => const PaymentsScreen(),
+          builder: (context, state) => const RoleGate(
+            path: '/payments',
+            child: PaymentsScreen(),
+          ),
         ),
         GoRoute(
           path: '/reconciliation',
-          builder: (context, state) => const ReconciliationScreen(),
+          builder: (context, state) => const RoleGate(
+            path: '/reconciliation',
+            child: ReconciliationScreen(),
+          ),
         ),
         GoRoute(
           path: '/reports',
-          builder: (context, state) => const ReportsScreen(),
+          builder: (context, state) => const RoleGate(
+            path: '/reports',
+            child: ReportsScreen(),
+          ),
         ),
       ],
     ),
