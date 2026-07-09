@@ -15,7 +15,24 @@ create table schools (
   district text not null,
   school_type text not null,
   academic_year text not null,
+  address text not null default '',
+  contact_email text not null default '',
+  contact_phone text not null default '',
+  logo_url text not null default '',
   created_at timestamptz not null default now()
+);
+
+create table class_sections (
+  id uuid primary key default gen_random_uuid(),
+  school_id uuid not null references schools(id) on delete cascade,
+  class_name text not null,
+  section text not null,
+  class_teacher text not null default '',
+  room_label text not null default '',
+  capacity integer not null default 45 check (capacity > 0),
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  unique (school_id, class_name, section)
 );
 
 create table users (
@@ -939,6 +956,7 @@ $$;
 grant execute on function create_student_with_guardian(text, text, text, text, text, text, text, text, text, text) to authenticated;
 
 alter table schools enable row level security;
+alter table class_sections enable row level security;
 alter table users enable row level security;
 alter table guardians enable row level security;
 alter table students enable row level security;
@@ -956,6 +974,20 @@ alter table audit_logs enable row level security;
 create policy "school members can read own school"
 on schools for select
 using (id = current_user_school_id());
+
+create policy "setup roles can update own school"
+on schools for update
+using (id = current_user_school_id() and current_user_role() in ('admin', 'principal'))
+with check (id = current_user_school_id() and current_user_role() in ('admin', 'principal'));
+
+create policy "school members can read class sections"
+on class_sections for select
+using (school_id = current_user_school_id());
+
+create policy "setup roles can manage class sections"
+on class_sections for all
+using (school_id = current_user_school_id() and current_user_role() in ('admin', 'principal'))
+with check (school_id = current_user_school_id() and current_user_role() in ('admin', 'principal'));
 
 create policy "admins can manage users"
 on users for all

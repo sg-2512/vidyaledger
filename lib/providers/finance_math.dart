@@ -15,10 +15,7 @@ StudentFinanceSummary calculateFinanceFor(AppState state, String studentId) {
         payment.studentId == studentId &&
         payment.status == PaymentStatus.completed,
   );
-  final totalDemand = demands.fold<double>(
-    0,
-    (sum, item) => sum + item.amount,
-  );
+  final totalDemand = demands.fold<double>(0, (sum, item) => sum + item.amount);
   final concessionTotal = concessions.fold<double>(
     0,
     (sum, item) => sum + item.amount,

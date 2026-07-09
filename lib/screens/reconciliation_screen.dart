@@ -25,67 +25,113 @@ class _ReconciliationScreenState extends ConsumerState<ReconciliationScreen> {
       children: [
         const PageHeader(
           title: 'Reconciliation',
-          subtitle: 'Match UPI, bank transfer, cheque, and cash records against receipts.',
+          subtitle:
+              'Match UPI, bank transfer, cheque, and cash records against receipts.',
         ),
         SectionCard(
           title: 'Exception Queue',
-          child: DataTable(
-            columns: const [
-              DataColumn(label: Text('Receipt')),
-              DataColumn(label: Text('Channel Ref')),
-              DataColumn(label: Text('Amount')),
-              DataColumn(label: Text('Status')),
-              DataColumn(label: Text('Exception')),
-              DataColumn(label: Text('Action')),
-            ],
-            rows: state.reconciliationItems.map((item) {
-              final payment = _paymentFor(state, item.paymentId);
-              final updating = updatingItemId == item.id;
-              return DataRow(cells: [
-                DataCell(Text(payment?.receiptNo ?? 'Missing payment')),
-                DataCell(Text(item.channelRef)),
-                DataCell(Text(moneyFormat.format(payment?.amount ?? 0))),
-                DataCell(StatusPill(label: item.status.label, color: statusColor(item.status.label))),
-                DataCell(Text(item.exceptionReason.isEmpty ? '-' : item.exceptionReason)),
-                DataCell(
-                  Wrap(
-                    spacing: 4,
-                    children: [
-                      TextButton(
-                        onPressed: updating
-                            ? null
-                            : () => _updateReconciliation(
-                                  item.id,
-                                  ReconciliationStatus.matched,
-                                  '',
-                                ),
-                        child: Text(updating ? 'Saving' : 'Match'),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 1000),
+              child: DataTable(
+                columns: const [
+                  DataColumn(label: Text('Receipt')),
+                  DataColumn(label: Text('Channel Ref')),
+                  DataColumn(label: Text('Amount')),
+                  DataColumn(label: Text('Status')),
+                  DataColumn(label: Text('Exception')),
+                  DataColumn(label: Text('Action')),
+                ],
+                rows: state.reconciliationItems.map((item) {
+                  final payment = _paymentFor(state, item.paymentId);
+                  final updating = updatingItemId == item.id;
+                  return DataRow(
+                    cells: [
+                      DataCell(Text(payment?.receiptNo ?? 'Missing payment')),
+                      DataCell(Text(item.channelRef)),
+                      DataCell(Text(moneyFormat.format(payment?.amount ?? 0))),
+                      DataCell(
+                        StatusPill(
+                          label: item.status.label,
+                          color: statusColor(item.status.label),
+                        ),
                       ),
-                      TextButton(
-                        onPressed: updating
-                            ? null
-                            : () => _updateReconciliation(
-                                  item.id,
-                                  ReconciliationStatus.duplicate,
-                                  'Possible duplicate settlement',
-                                ),
-                        child: const Text('Duplicate'),
+                      DataCell(
+                        Text(
+                          item.exceptionReason.isEmpty ? '-' : item.exceptionReason,
+                        ),
                       ),
-                      TextButton(
-                        onPressed: updating
-                            ? null
-                            : () => _updateReconciliation(
-                                  item.id,
-                                  ReconciliationStatus.partial,
-                                  'Amount mismatch needs accountant review',
-                                ),
-                        child: const Text('Partial'),
+                      DataCell(
+                        item.status == ReconciliationStatus.unmatched
+                            ? Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  OutlinedButton.icon(
+                                    onPressed: updating
+                                        ? null
+                                        : () => _updateReconciliation(
+                                              item.id,
+                                              ReconciliationStatus.matched,
+                                              '',
+                                            ),
+                                    icon: const Icon(Icons.check, size: 14),
+                                    label: const Text('Match', style: TextStyle(fontSize: 11)),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: const Color(0xFF0F766E),
+                                      side: const BorderSide(color: Color(0xFF0F766E)),
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  OutlinedButton.icon(
+                                    onPressed: updating
+                                        ? null
+                                        : () => _updateReconciliation(
+                                              item.id,
+                                              ReconciliationStatus.duplicate,
+                                              'Possible duplicate settlement',
+                                            ),
+                                    icon: const Icon(Icons.copy, size: 14),
+                                    label: const Text('Duplicate', style: TextStyle(fontSize: 11)),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: const Color(0xFFB45309),
+                                      side: const BorderSide(color: Color(0xFFB45309)),
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  OutlinedButton.icon(
+                                    onPressed: updating
+                                        ? null
+                                        : () => _updateReconciliation(
+                                              item.id,
+                                              ReconciliationStatus.partial,
+                                              'Amount mismatch needs review',
+                                            ),
+                                    icon: const Icon(Icons.hourglass_bottom, size: 14),
+                                    label: const Text('Partial', style: TextStyle(fontSize: 11)),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: const Color(0xFF2563EB),
+                                      side: const BorderSide(color: Color(0xFF2563EB)),
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : const SizedBox.shrink(),
                       ),
                     ],
-                  ),
-                ),
-              ]);
-            }).toList(),
+                  );
+                }).toList(),
+              ),
+            ),
           ),
         ),
       ],
@@ -108,7 +154,9 @@ class _ReconciliationScreenState extends ConsumerState<ReconciliationScreen> {
             .updateReconciliation(itemId, status, reason);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Demo reconciliation marked ${status.label}.')),
+          SnackBar(
+            content: Text('Demo reconciliation marked ${status.label}.'),
+          ),
         );
         return;
       }

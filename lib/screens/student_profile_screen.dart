@@ -26,11 +26,21 @@ class StudentProfileScreen extends ConsumerWidget {
 
     final guardian = _guardianFor(state, student.guardianId);
     final summary = ref.watch(financeSummaryProvider(student.id));
-    final demands = state.feeDemands.where((item) => item.studentId == student.id).toList();
-    final concessions = state.concessions.where((item) => item.studentId == student.id).toList();
-    final payments = state.payments.where((item) => item.studentId == student.id).toList();
+    final demands = state.feeDemands
+        .where((item) => item.studentId == student.id)
+        .toList();
+    final concessions = state.concessions
+        .where((item) => item.studentId == student.id)
+        .toList();
+    final payments = state.payments
+        .where((item) => item.studentId == student.id)
+        .toList();
     final width = MediaQuery.of(context).size.width;
-    final statColumns = width > 1100 ? 4 : width > 720 ? 2 : 1;
+    final statColumns = width > 1100
+        ? 4
+        : width > 720
+        ? 2
+        : 1;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -85,59 +95,84 @@ class StudentProfileScreen extends ConsumerWidget {
               DataColumn(label: Text('Status')),
             ],
             rows: demands.map((demand) {
-              final head = state.feeHeads.firstWhere((item) => item.id == demand.feeHeadId);
-              return DataRow(cells: [
-                DataCell(Text(head.name)),
-                DataCell(Text(moneyFormat.format(demand.amount))),
-                DataCell(Text(DateFormat.yMMMd().format(demand.dueDate))),
-                DataCell(StatusPill(label: demand.status, color: statusColor(demand.status))),
-              ]);
+              final head = state.feeHeads.firstWhere(
+                (item) => item.id == demand.feeHeadId,
+              );
+              return DataRow(
+                cells: [
+                  DataCell(Text(head.name)),
+                  DataCell(Text(moneyFormat.format(demand.amount))),
+                  DataCell(Text(DateFormat.yMMMd().format(demand.dueDate))),
+                  DataCell(
+                    StatusPill(
+                      label: demand.status,
+                      color: statusColor(demand.status),
+                    ),
+                  ),
+                ],
+              );
             }).toList(),
           ),
         ),
         const SizedBox(height: 18),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: SectionCard(
-                title: 'Concessions',
-                child: concessions.isEmpty
-                    ? const EmptyState(message: 'No concessions for this student.')
-                    : Column(
-                        children: concessions.map((item) {
-                          return ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: Text('${item.category} - ${item.concessionType}'),
-                            subtitle: Text(item.reason),
-                            trailing: StatusPill(
-                              label: item.status.label,
-                              color: statusColor(item.status.label),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-              ),
-            ),
-            const SizedBox(width: 18),
-            Expanded(
-              child: SectionCard(
-                title: 'Payments',
-                child: payments.isEmpty
-                    ? const EmptyState(message: 'No payments recorded yet.')
-                    : Column(
-                        children: payments.map((payment) {
-                          return ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: Text('${payment.receiptNo} | ${payment.mode.label}'),
-                            subtitle: Text(payment.referenceNo),
-                            trailing: Text(moneyFormat.format(payment.amount)),
-                          );
-                        }).toList(),
-                      ),
-              ),
-            ),
-          ],
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final stacked = constraints.maxWidth < 800;
+            final concessionCard = SectionCard(
+              title: 'Concessions',
+              child: concessions.isEmpty
+                  ? const EmptyState(
+                      message: 'No concessions for this student.',
+                    )
+                  : Column(
+                      children: concessions.map((item) {
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(
+                            '${item.category} - ${item.concessionType}',
+                          ),
+                          subtitle: Text(item.reason),
+                          trailing: StatusPill(
+                            label: item.status.label,
+                            color: statusColor(item.status.label),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+            );
+
+            final paymentCard = SectionCard(
+              title: 'Payments',
+              child: payments.isEmpty
+                  ? const EmptyState(message: 'No payments recorded yet.')
+                  : Column(
+                      children: payments.map((payment) {
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(
+                            '${payment.receiptNo} | ${payment.mode.label}',
+                          ),
+                          subtitle: Text(payment.referenceNo),
+                          trailing: Text(moneyFormat.format(payment.amount)),
+                        );
+                      }).toList(),
+                    ),
+            );
+
+            return stacked
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [concessionCard, const SizedBox(height: 18), paymentCard],
+                  )
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: concessionCard),
+                      const SizedBox(width: 18),
+                      Expanded(child: paymentCard),
+                    ],
+                  );
+          },
         ),
       ],
     );

@@ -376,7 +376,7 @@ class _ReceiptRegister extends ConsumerWidget {
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 860),
+          constraints: const BoxConstraints(minWidth: 950),
           child: Column(
             children: payments.map((payment) {
               final student = students.firstWhere(
@@ -457,7 +457,7 @@ class _ReceiptRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 860,
+      width: 950,
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(14),

@@ -6,11 +6,7 @@ import '../providers/app_state.dart';
 import '../security/role_access.dart';
 
 class RoleGate extends ConsumerWidget {
-  const RoleGate({
-    required this.path,
-    required this.child,
-    super.key,
-  });
+  const RoleGate({required this.path, required this.child, super.key});
 
   final String path;
   final Widget child;
@@ -40,10 +36,7 @@ class RoleGate extends ConsumerWidget {
 }
 
 class _AccessDenied extends StatelessWidget {
-  const _AccessDenied({
-    required this.message,
-    required this.fallbackPath,
-  });
+  const _AccessDenied({required this.message, required this.fallbackPath});
 
   final String message;
   final String fallbackPath;
@@ -71,10 +64,7 @@ class _AccessDenied extends StatelessWidget {
                   color: const Color(0xFFFFEDD5),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(
-                  Icons.lock_outline,
-                  color: Color(0xFFC2410C),
-                ),
+                child: const Icon(Icons.lock_outline, color: Color(0xFFC2410C)),
               ),
               const SizedBox(height: 16),
               const Text(
@@ -88,10 +78,7 @@ class _AccessDenied extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 message,
-                style: const TextStyle(
-                  color: Color(0xFF64748B),
-                  height: 1.5,
-                ),
+                style: const TextStyle(color: Color(0xFF64748B), height: 1.5),
               ),
               const SizedBox(height: 18),
               FilledButton.icon(

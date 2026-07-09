@@ -13,6 +13,7 @@ class AppState {
     required this.users,
     required this.guardians,
     required this.students,
+    required this.classSections,
     required this.feeHeads,
     required this.feeRules,
     required this.feeDemands,
@@ -27,6 +28,7 @@ class AppState {
   final List<AppUser> users;
   final List<Guardian> guardians;
   final List<Student> students;
+  final List<ClassSection> classSections;
   final List<FeeHead> feeHeads;
   final List<FeeRule> feeRules;
   final List<FeeDemand> feeDemands;
@@ -45,6 +47,9 @@ class AppState {
       district: 'Jaipur',
       schoolType: 'Unaided Private School',
       academicYear: '2026-27',
+      address: 'Sector 12, Jaipur, Rajasthan',
+      contactEmail: 'office@vidyapublic.demo',
+      contactPhone: '+91 141 400 2026',
     );
     final guardians = [
       const Guardian(
@@ -120,6 +125,44 @@ class AppState {
         category: 'ST',
         phone: '+91 98765 10004',
         status: 'Active',
+      ),
+    ];
+    final classSections = [
+      const ClassSection(
+        id: 'cs-6-a',
+        className: '6',
+        section: 'A',
+        classTeacher: 'Nisha Verma',
+        roomLabel: 'Room 201',
+        capacity: 45,
+        active: true,
+      ),
+      const ClassSection(
+        id: 'cs-7-a',
+        className: '7',
+        section: 'A',
+        classTeacher: 'Anil Sharma',
+        roomLabel: 'Room 205',
+        capacity: 45,
+        active: true,
+      ),
+      const ClassSection(
+        id: 'cs-8-b',
+        className: '8',
+        section: 'B',
+        classTeacher: 'Farah Khan',
+        roomLabel: 'Room 302',
+        capacity: 42,
+        active: true,
+      ),
+      const ClassSection(
+        id: 'cs-9-c',
+        className: '9',
+        section: 'C',
+        classTeacher: 'Ravi Meena',
+        roomLabel: 'Room 401',
+        capacity: 40,
+        active: true,
       ),
     ];
     final feeHeads = [
@@ -268,6 +311,7 @@ class AppState {
       ],
       guardians: guardians,
       students: students,
+      classSections: classSections,
       feeHeads: feeHeads,
       feeRules: [
         FeeRule(
@@ -350,6 +394,7 @@ class AppState {
     List<AppUser>? users,
     List<Guardian>? guardians,
     List<Student>? students,
+    List<ClassSection>? classSections,
     List<FeeHead>? feeHeads,
     List<FeeRule>? feeRules,
     List<FeeDemand>? feeDemands,
@@ -364,6 +409,7 @@ class AppState {
       users: users ?? this.users,
       guardians: guardians ?? this.guardians,
       students: students ?? this.students,
+      classSections: classSections ?? this.classSections,
       feeHeads: feeHeads ?? this.feeHeads,
       feeRules: feeRules ?? this.feeRules,
       feeDemands: feeDemands ?? this.feeDemands,
@@ -403,6 +449,59 @@ class AppController extends Notifier<AppState> {
     );
     state = state.copyWith(feeHeads: [...state.feeHeads, feeHead]);
     _audit('Created fee head $name', 'fee_head');
+  }
+
+  void updateSchoolProfile(SchoolProfile school) {
+    state = state.copyWith(school: school);
+    _audit('Updated school profile for ${school.name}', 'school');
+  }
+
+  void addClassSection({
+    required String className,
+    required String section,
+    required String classTeacher,
+    required String roomLabel,
+    required int capacity,
+  }) {
+    final normalizedClass = className.trim();
+    final normalizedSection = section.trim().toUpperCase();
+    final existingIndex = state.classSections.indexWhere(
+      (item) =>
+          item.className == normalizedClass &&
+          item.section == normalizedSection,
+    );
+    final classSection = ClassSection(
+      id: existingIndex >= 0
+          ? state.classSections[existingIndex].id
+          : _id('cs'),
+      className: normalizedClass,
+      section: normalizedSection,
+      classTeacher: classTeacher,
+      roomLabel: roomLabel,
+      capacity: capacity,
+      active: true,
+    );
+
+    final nextSections = [...state.classSections];
+    if (existingIndex >= 0) {
+      nextSections[existingIndex] = classSection;
+    } else {
+      nextSections.add(classSection);
+    }
+    state = state.copyWith(classSections: nextSections);
+    _audit('Configured ${classSection.label}', 'class_section');
+  }
+
+  void setClassSectionActive(String classSectionId, bool active) {
+    final nextSections = state.classSections.map((item) {
+      if (item.id != classSectionId) return item;
+      return item.copyWith(active: active);
+    }).toList();
+    state = state.copyWith(classSections: nextSections);
+    _audit(
+      '${active ? 'Activated' : 'Archived'} class section $classSectionId',
+      'class_section',
+    );
   }
 
   void addStudentWithGuardian({

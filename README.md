@@ -80,13 +80,15 @@ supabase/upgrade_fee_generation.sql
 supabase/upgrade_concession_workflow.sql
 supabase/upgrade_reconciliation_workflow.sql
 supabase/upgrade_student_register.sql
+supabase/upgrade_school_settings.sql
 ```
 
 This adds database-issued receipt numbers, payment idempotency keys, atomic
 receipt creation, persisted fee generation, concession approvals,
 reconciliation rows, ledger posting, and audit logs for new payments, fee
 demands, concessions, reconciliation decisions, and student-register additions
-recorded from the app.
+recorded from the app. The school settings upgrade adds editable school
+profile fields and a class-section master for tenant setup.
 
 Then start with credentials:
 
@@ -114,7 +116,9 @@ Role access is enforced in the Flutter UI:
 
 The student register supports class, section, and category filters, complete
 student-detail PDF export, and staff-only student creation inside the signed-in
-school tenant.
+school tenant. Admin and principal users can also open Settings to edit the
+school profile and configure class-section capacity, class teacher, room, and
+active/archive status.
 
 In Supabase mode, the app also loads the signed-in school's profile from the
 `schools` table and uses it in the workspace header and exported PDFs, so each

@@ -92,7 +92,10 @@ class _StudentsScreenState extends ConsumerState<StudentsScreen> {
             ],
           ),
         ),
-        _ClassSectionSummary(students: students),
+        _ClassSectionSummary(
+          students: students,
+          classSections: state.classSections,
+        ),
         const SizedBox(height: 18),
         SectionCard(
           title: 'Segmentation',
@@ -136,52 +139,80 @@ class _StudentsScreenState extends ConsumerState<StudentsScreen> {
         const SizedBox(height: 18),
         SectionCard(
           title: 'Student Finance Register (${students.length})',
-          child: DataTable(
-            columns: const [
-              DataColumn(label: Text('Admission No.')),
-              DataColumn(label: Text('Student')),
-              DataColumn(label: Text('Class')),
-              DataColumn(label: Text('Section')),
-              DataColumn(label: Text('Category')),
-              DataColumn(label: Text('Guardian')),
-              DataColumn(label: Text('Phone')),
-              DataColumn(label: Text('Pending')),
-              DataColumn(label: Text('Action')),
-            ],
-            rows: students.map((student) {
-              final summary = ref.watch(financeSummaryProvider(student.id));
-              final guardian = _guardianFor(state, student.guardianId);
-              return DataRow(
-                cells: [
-                  DataCell(Text(student.admissionNo)),
-                  DataCell(Text(student.name)),
-                  DataCell(Text('Class ${student.className}')),
-                  DataCell(Text(student.section)),
-                  DataCell(
-                    StatusPill(
-                      label: student.category,
-                      color: const Color(0xFF0F766E),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              columns: const [
+                DataColumn(label: Text('Admission No.')),
+                DataColumn(label: Text('Student')),
+                DataColumn(label: Text('Class')),
+                DataColumn(label: Text('Section')),
+                DataColumn(label: Text('Category')),
+                DataColumn(label: Text('Guardian')),
+                DataColumn(label: Text('Phone')),
+                DataColumn(label: Text('Pending')),
+                DataColumn(label: Text('Action')),
+              ],
+              rows: students.map((student) {
+                final summary = ref.watch(financeSummaryProvider(student.id));
+                final guardian = _guardianFor(state, student.guardianId);
+                return DataRow(
+                  cells: [
+                    DataCell(Text(student.admissionNo)),
+                    DataCell(Text(student.name)),
+                    DataCell(Text('Class ${student.className}')),
+                    DataCell(Text(student.section)),
+                    DataCell(
+                      StatusPill(
+                        label: student.category,
+                        color: const Color(0xFF0F766E),
+                      ),
                     ),
-                  ),
-                  DataCell(Text(guardian?.name ?? '-')),
-                  DataCell(
-                    Text(
-                      student.phone.isNotEmpty
-                          ? student.phone
-                          : guardian?.phone ?? '-',
+                    DataCell(Text(guardian?.name ?? '-')),
+                    DataCell(
+                      Text(
+                        student.phone.isNotEmpty
+                            ? student.phone
+                            : guardian?.phone ?? '-',
+                      ),
                     ),
-                  ),
-                  DataCell(Text(moneyFormat.format(summary.pending))),
-                  DataCell(
-                    TextButton.icon(
-                      onPressed: () => context.go('/students/${student.id}'),
-                      icon: const Icon(Icons.open_in_new),
-                      label: const Text('Open'),
+                    DataCell(
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: summary.pending > 0
+                              ? const Color(0xFFFEE2E2)
+                              : const Color(0xFFD1FAE5),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          summary.pending > 0
+                              ? moneyFormat.format(summary.pending)
+                              : 'Paid',
+                          style: TextStyle(
+                            color: summary.pending > 0
+                                ? const Color(0xFF991B1B)
+                                : const Color(0xFF065F46),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ],
-              );
-            }).toList(),
+                    DataCell(
+                      TextButton.icon(
+                        onPressed: () => context.go('/students/${student.id}'),
+                        icon: const Icon(Icons.open_in_new),
+                        label: const Text('Open'),
+                      ),
+                    ),
+                  ],
+                );
+              }).toList(),
+            ),
           ),
         ),
       ],
@@ -190,8 +221,17 @@ class _StudentsScreenState extends ConsumerState<StudentsScreen> {
 
   List<String> _options(Iterable<String> values) {
     final sorted =
-        values.where((value) => value.trim().isNotEmpty).toSet().toList()
-          ..sort();
+        values.where((value) => value.trim().isNotEmpty).toSet().toList();
+    
+    sorted.sort((a, b) {
+      final aNum = int.tryParse(a);
+      final bNum = int.tryParse(b);
+      if (aNum != null && bNum != null) {
+        return aNum.compareTo(bNum);
+      }
+      return a.compareTo(b);
+    });
+    
     return ['All', ...sorted];
   }
 
@@ -203,10 +243,20 @@ class _StudentsScreenState extends ConsumerState<StudentsScreen> {
   }
 
   Future<void> _openAddStudentDialog() async {
+    final classSections =
+        ref
+            .read(appControllerProvider)
+            .classSections
+            .where((item) => item.active)
+            .toList()
+          ..sort((a, b) => a.label.compareTo(b.label));
     final added = await showDialog<bool>(
       context: context,
-      builder: (context) =>
-          _AddStudentDialog(saving: addingStudent, onSubmit: _addStudent),
+      builder: (context) => _AddStudentDialog(
+        saving: addingStudent,
+        classSections: classSections,
+        onSubmit: _addStudent,
+      ),
     );
     if (added == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -268,9 +318,13 @@ class _StudentsScreenState extends ConsumerState<StudentsScreen> {
 }
 
 class _ClassSectionSummary extends StatelessWidget {
-  const _ClassSectionSummary({required this.students});
+  const _ClassSectionSummary({
+    required this.students,
+    required this.classSections,
+  });
 
   final List<Student> students;
+  final List<ClassSection> classSections;
 
   @override
   Widget build(BuildContext context) {
@@ -282,8 +336,12 @@ class _ClassSectionSummary extends StatelessWidget {
         ifAbsent: () => 1,
       );
     }
-    final entries = groups.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
+    final activeSections = classSections.where((item) => item.active).toList()
+      ..sort((a, b) => a.label.compareTo(b.label));
+    final totalCapacity = activeSections.fold<int>(
+      0,
+      (sum, item) => sum + item.capacity,
+    );
 
     return Wrap(
       spacing: 12,
@@ -296,15 +354,20 @@ class _ClassSectionSummary extends StatelessWidget {
         ),
         _SegmentTile(
           label: 'Class sections',
-          value: groups.length.toString(),
+          value: activeSections.length.toString(),
           icon: Icons.grid_view,
         ),
-        ...entries
+        _SegmentTile(
+          label: 'Capacity',
+          value: totalCapacity.toString(),
+          icon: Icons.event_seat_outlined,
+        ),
+        ...activeSections
             .take(6)
             .map(
-              (entry) => _SegmentTile(
-                label: entry.key,
-                value: entry.value.toString(),
+              (section) => _SegmentTile(
+                label: section.label,
+                value: '${groups[section.label] ?? 0}/${section.capacity}',
                 icon: Icons.class_outlined,
               ),
             ),
@@ -421,9 +484,14 @@ class _StudentFormData {
 }
 
 class _AddStudentDialog extends StatefulWidget {
-  const _AddStudentDialog({required this.saving, required this.onSubmit});
+  const _AddStudentDialog({
+    required this.saving,
+    required this.classSections,
+    required this.onSubmit,
+  });
 
   final bool saving;
+  final List<ClassSection> classSections;
   final Future<bool> Function(_StudentFormData data) onSubmit;
 
   @override
@@ -442,6 +510,16 @@ class _AddStudentDialogState extends State<_AddStudentDialog> {
   final guardianEmailController = TextEditingController();
   final guardianAddressController = TextEditingController();
   bool saving = false;
+  String? selectedClassSectionId;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.classSections.isNotEmpty) {
+      selectedClassSectionId = widget.classSections.first.id;
+      _applyClassSection(widget.classSections.first);
+    }
+  }
 
   @override
   void dispose() {
@@ -478,15 +556,49 @@ class _AddStudentDialogState extends State<_AddStudentDialog> {
                 ],
               ),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(child: _field(classController, 'Class')),
-                  const SizedBox(width: 12),
-                  Expanded(child: _field(sectionController, 'Section')),
-                  const SizedBox(width: 12),
-                  Expanded(child: _field(categoryController, 'Category')),
-                ],
-              ),
+              if (widget.classSections.isEmpty)
+                Row(
+                  children: [
+                    Expanded(child: _field(classController, 'Class')),
+                    const SizedBox(width: 12),
+                    Expanded(child: _field(sectionController, 'Section')),
+                    const SizedBox(width: 12),
+                    Expanded(child: _field(categoryController, 'Category')),
+                  ],
+                )
+              else
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: selectedClassSectionId,
+                        decoration: const InputDecoration(
+                          labelText: 'Class-section',
+                        ),
+                        items: widget.classSections
+                            .map(
+                              (item) => DropdownMenuItem(
+                                value: item.id,
+                                child: Text(item.label),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          if (value == null) return;
+                          final selected = widget.classSections.firstWhere(
+                            (item) => item.id == value,
+                          );
+                          setState(() {
+                            selectedClassSectionId = selected.id;
+                            _applyClassSection(selected);
+                          });
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(child: _field(categoryController, 'Category')),
+                  ],
+                ),
               const SizedBox(height: 12),
               _field(studentPhoneController, 'Student phone'),
               const SizedBox(height: 18),
@@ -537,6 +649,11 @@ class _AddStudentDialogState extends State<_AddStudentDialog> {
       controller: controller,
       decoration: InputDecoration(labelText: label),
     );
+  }
+
+  void _applyClassSection(ClassSection classSection) {
+    classController.text = classSection.className;
+    sectionController.text = classSection.section;
   }
 
   Future<void> _submit() async {

@@ -9,6 +9,7 @@ class FinanceSnapshot {
     required this.users,
     required this.guardians,
     required this.students,
+    required this.classSections,
     required this.feeHeads,
     required this.feeRules,
     required this.feeDemands,
@@ -22,6 +23,7 @@ class FinanceSnapshot {
   final List<AppUser> users;
   final List<Guardian> guardians;
   final List<Student> students;
+  final List<ClassSection> classSections;
   final List<FeeHead> feeHeads;
   final List<FeeRule> feeRules;
   final List<FeeDemand> feeDemands;
@@ -37,6 +39,7 @@ class FinanceSnapshot {
       users: users,
       guardians: guardians,
       students: students,
+      classSections: classSections,
       feeHeads: feeHeads,
       feeRules: feeRules,
       feeDemands: feeDemands,
@@ -82,6 +85,16 @@ class SupabaseFinanceService {
       _selectTable('reconciliation_items'),
       _selectTable('audit_logs', orderBy: 'created_at'),
     ]);
+    final classSectionRows = await _selectOptionalTable(
+      'class_sections',
+      orderBy: 'class_name',
+    );
+    final students = results[3].map(_studentFromRow).toList();
+    final classSections =
+        classSectionRows.isEmpty
+              ? _classSectionsFromStudents(students)
+              : classSectionRows.map(_classSectionFromRow).toList()
+          ..sort((a, b) => a.label.compareTo(b.label));
 
     return FinanceSnapshot(
       school: results[0].isEmpty
@@ -89,7 +102,8 @@ class SupabaseFinanceService {
           : _schoolFromRow(results[0].first),
       users: results[1].map(_userFromRow).toList(),
       guardians: results[2].map(_guardianFromRow).toList(),
-      students: results[3].map(_studentFromRow).toList(),
+      students: students,
+      classSections: classSections,
       feeHeads: results[4].map(_feeHeadFromRow).toList(),
       feeRules: results[5].map(_feeRuleFromRow).toList(),
       feeDemands: results[6].map(_feeDemandFromRow).toList(),
@@ -177,6 +191,92 @@ class SupabaseFinanceService {
       },
     );
     return _studentFromRow(_singleRowFromRpc(data));
+  }
+
+  Future<SchoolProfile> updateSchoolProfile(SchoolProfile school) async {
+    final userRow = await _currentUserRow();
+    final updated = await client
+        .from('schools')
+        .update({
+          'name': school.name,
+          'board': school.board,
+          'state': school.state,
+          'district': school.district,
+          'school_type': school.schoolType,
+          'academic_year': school.academicYear,
+          'address': school.address,
+          'contact_email': school.contactEmail,
+          'contact_phone': school.contactPhone,
+          'logo_url': school.logoUrl,
+        })
+        .eq('id', userRow['school_id'])
+        .select()
+        .single();
+    final profile = _schoolFromRow(Map<String, dynamic>.from(updated as Map));
+    await _insertAuditLog(
+      userRow: userRow,
+      action: 'Updated school profile for ${profile.name}',
+      objectType: 'school',
+      objectId: profile.id,
+    );
+    return profile;
+  }
+
+  Future<ClassSection> addClassSection({
+    required String className,
+    required String section,
+    required String classTeacher,
+    required String roomLabel,
+    required int capacity,
+  }) async {
+    final userRow = await _currentUserRow();
+    final row = await client
+        .from('class_sections')
+        .upsert({
+          'school_id': userRow['school_id'],
+          'class_name': className.trim(),
+          'section': section.trim().toUpperCase(),
+          'class_teacher': classTeacher.trim(),
+          'room_label': roomLabel.trim(),
+          'capacity': capacity,
+          'active': true,
+        }, onConflict: 'school_id,class_name,section')
+        .select()
+        .single();
+    final classSection = _classSectionFromRow(
+      Map<String, dynamic>.from(row as Map),
+    );
+    await _insertAuditLog(
+      userRow: userRow,
+      action: 'Configured ${classSection.label}',
+      objectType: 'class_section',
+      objectId: classSection.id,
+    );
+    return classSection;
+  }
+
+  Future<ClassSection> setClassSectionActive(
+    String classSectionId,
+    bool active,
+  ) async {
+    final userRow = await _currentUserRow();
+    final row = await client
+        .from('class_sections')
+        .update({'active': active})
+        .eq('id', classSectionId)
+        .eq('school_id', userRow['school_id'])
+        .select()
+        .single();
+    final classSection = _classSectionFromRow(
+      Map<String, dynamic>.from(row as Map),
+    );
+    await _insertAuditLog(
+      userRow: userRow,
+      action: '${active ? 'Activated' : 'Archived'} ${classSection.label}',
+      objectType: 'class_section',
+      objectId: classSection.id,
+    );
+    return classSection;
   }
 
   Future<Concession> submitConcession({
@@ -274,6 +374,20 @@ class SupabaseFinanceService {
     return rows.map((row) => Map<String, dynamic>.from(row as Map)).toList();
   }
 
+  Future<List<Map<String, dynamic>>> _selectOptionalTable(
+    String table, {
+    String? orderBy,
+  }) async {
+    try {
+      return await _selectTable(table, orderBy: orderBy);
+    } on PostgrestException catch (error) {
+      if (error.code == '42P01' || error.message.contains(table)) {
+        return [];
+      }
+      rethrow;
+    }
+  }
+
   Future<Map<String, dynamic>> _currentUserRow() async {
     final authUser = client.auth.currentUser;
     if (authUser == null) {
@@ -322,6 +436,10 @@ class SupabaseFinanceService {
       district: row['district']?.toString() ?? '',
       schoolType: row['school_type']?.toString() ?? '',
       academicYear: row['academic_year']?.toString() ?? '',
+      address: row['address']?.toString() ?? '',
+      contactEmail: row['contact_email']?.toString() ?? '',
+      contactPhone: row['contact_phone']?.toString() ?? '',
+      logoUrl: row['logo_url']?.toString() ?? '',
     );
   }
 
@@ -357,6 +475,40 @@ class SupabaseFinanceService {
       phone: row['phone']?.toString() ?? '',
       status: row['status']?.toString() ?? 'active',
     );
+  }
+
+  ClassSection _classSectionFromRow(Map<String, dynamic> row) {
+    return ClassSection(
+      id: row['id'].toString(),
+      className: row['class_name']?.toString() ?? '',
+      section: row['section']?.toString() ?? '',
+      classTeacher: row['class_teacher']?.toString() ?? '',
+      roomLabel: row['room_label']?.toString() ?? '',
+      capacity: _toInt(row['capacity']),
+      active: row['active'] != false,
+    );
+  }
+
+  List<ClassSection> _classSectionsFromStudents(List<Student> students) {
+    final sections = <String, ClassSection>{};
+    for (final student in students) {
+      final key = '${student.className}-${student.section}';
+      sections.putIfAbsent(
+        key,
+        () => ClassSection(
+          id: 'derived-$key',
+          className: student.className,
+          section: student.section,
+          classTeacher: '',
+          roomLabel: '',
+          capacity: 45,
+          active: true,
+        ),
+      );
+    }
+    final values = sections.values.toList()
+      ..sort((a, b) => a.label.compareTo(b.label));
+    return values;
   }
 
   FeeHead _feeHeadFromRow(Map<String, dynamic> row) {

@@ -17,14 +17,19 @@ class ReportsScreen extends ConsumerWidget {
     final approved = ref.watch(approvedConcessionCountProvider);
     final pendingApprovals = ref.watch(pendingConcessionCountProvider);
     final width = MediaQuery.of(context).size.width;
-    final statColumns = width > 1100 ? 4 : width > 720 ? 2 : 1;
+    final statColumns = width > 1100
+        ? 4
+        : width > 720
+        ? 2
+        : 1;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         PageHeader(
           title: 'Reports',
-          subtitle: 'Export accountant-friendly collection, student ledger, concession, and defaulter summaries.',
+          subtitle:
+              'Export accountant-friendly collection, student ledger, concession, and defaulter summaries.',
           trailing: FilledButton.icon(
             onPressed: () async {
               final bytes = await ReportService.buildCollectionReport(state);
@@ -80,11 +85,13 @@ class ReportsScreen extends ConsumerWidget {
               DataColumn(label: Text('Object')),
             ],
             rows: state.auditLogs.take(10).map((log) {
-              return DataRow(cells: [
-                DataCell(Text(log.actor)),
-                DataCell(Text(log.action)),
-                DataCell(Text(log.objectType)),
-              ]);
+              return DataRow(
+                cells: [
+                  DataCell(Text(log.actor)),
+                  DataCell(Text(log.action)),
+                  DataCell(Text(log.objectType)),
+                ],
+              );
             }).toList(),
           ),
         ),

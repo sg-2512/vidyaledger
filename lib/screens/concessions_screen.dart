@@ -18,7 +18,9 @@ class _ConcessionsScreenState extends ConsumerState<ConcessionsScreen> {
   String category = 'EWS';
   String fundingSource = 'School waiver';
   final amountController = TextEditingController(text: '5000');
-  final reasonController = TextEditingController(text: 'Verified document and principal review required.');
+  final reasonController = TextEditingController(
+    text: 'Verified document and principal review required.',
+  );
   bool submitting = false;
   String? updatingConcessionId;
 
@@ -35,93 +37,135 @@ class _ConcessionsScreenState extends ConsumerState<ConcessionsScreen> {
     if (state.students.isNotEmpty && studentId == null) {
       studentId = state.students.first.id;
     }
-    const categories = ['RTE', 'EWS', 'SC', 'ST', 'OBC', 'Minority', 'Girl Child', 'PwD', 'Sibling', 'Staff Child'];
-    const fundingSources = ['School waiver', 'Government reimbursement', 'Scholarship receivable', 'Sponsor', 'Trust fund'];
+    const categories = [
+      'RTE',
+      'EWS',
+      'SC',
+      'ST',
+      'OBC',
+      'Minority',
+      'Girl Child',
+      'PwD',
+      'Sibling',
+      'Staff Child',
+    ];
+    const fundingSources = [
+      'School waiver',
+      'Government reimbursement',
+      'Scholarship receivable',
+      'Sponsor',
+      'Trust fund',
+    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const PageHeader(
           title: 'Exemption & Concession Engine',
-          subtitle: 'Configurable Indian-school support workflows with approval and audit trail.',
+          subtitle:
+              'Configurable Indian-school support workflows with approval and audit trail.',
         ),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 410,
-              child: SectionCard(
-                title: 'Submit Concession Request',
-                child: Column(
-                  children: [
-                    DropdownButtonFormField<String>(
-                      initialValue: studentId,
-                      decoration: const InputDecoration(labelText: 'Student'),
-                      items: state.students
-                          .map((student) => DropdownMenuItem(value: student.id, child: Text('${student.name} (${student.category})')))
-                          .toList(),
-                      onChanged: (value) => setState(() => studentId = value),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final stacked = constraints.maxWidth < 900;
+            final form = SectionCard(
+              title: 'Submit Concession Request',
+              child: Column(
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: studentId,
+                    decoration: const InputDecoration(labelText: 'Student'),
+                    items: state.students
+                        .map(
+                          (student) => DropdownMenuItem(
+                            value: student.id,
+                            child: Text(
+                              '${student.name} (${student.category})',
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) => setState(() => studentId = value),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: category,
+                    decoration: const InputDecoration(
+                      labelText: 'Concession category',
                     ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      initialValue: category,
-                      decoration: const InputDecoration(labelText: 'Concession category'),
-                      items: categories
-                          .map((item) => DropdownMenuItem(value: item, child: Text(item)))
-                          .toList(),
-                      onChanged: (value) => setState(() => category = value ?? category),
+                    items: categories
+                        .map(
+                          (item) => DropdownMenuItem(
+                            value: item,
+                            child: Text(item),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) =>
+                        setState(() => category = value ?? category),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: fundingSource,
+                    decoration: const InputDecoration(
+                      labelText: 'Funding source',
                     ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      initialValue: fundingSource,
-                      decoration: const InputDecoration(labelText: 'Funding source'),
-                      items: fundingSources
-                          .map((item) => DropdownMenuItem(value: item, child: Text(item)))
-                          .toList(),
-                      onChanged: (value) => setState(() => fundingSource = value ?? fundingSource),
+                    items: fundingSources
+                        .map(
+                          (item) => DropdownMenuItem(
+                            value: item,
+                            child: Text(item),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) => setState(
+                      () => fundingSource = value ?? fundingSource,
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: amountController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Amount'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: amountController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Amount'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: reasonController,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Reason / document note',
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: reasonController,
-                      maxLines: 3,
-                      decoration: const InputDecoration(labelText: 'Reason / document note'),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: submitting || studentId == null
-                            ? null
-                            : _submitConcession,
-                        icon: submitting
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Icon(Icons.verified_user),
-                        label: Text(
-                          submitting ? 'Submitting...' : 'Submit Request',
-                        ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: submitting || studentId == null
+                          ? null
+                          : _submitConcession,
+                      icon: submitting
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.verified_user),
+                      label: Text(
+                        submitting ? 'Submitting...' : 'Submit Request',
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(width: 18),
-            Expanded(
-              child: SectionCard(
-                title: 'Approval Queue',
+            );
+
+            final queue = SectionCard(
+              title: 'Approval Queue',
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
                 child: DataTable(
                   columns: const [
                     DataColumn(label: Text('Student')),
@@ -134,45 +178,75 @@ class _ConcessionsScreenState extends ConsumerState<ConcessionsScreen> {
                   rows: state.concessions.map((item) {
                     final studentName = _studentName(state, item.studentId);
                     final updating = updatingConcessionId == item.id;
-                    return DataRow(cells: [
-                      DataCell(Text(studentName)),
-                      DataCell(Text(item.category)),
-                      DataCell(Text(item.fundingSource)),
-                      DataCell(Text(moneyFormat.format(item.amount))),
-                      DataCell(StatusPill(label: item.status.label, color: statusColor(item.status.label))),
-                      DataCell(
-                        Wrap(
-                          spacing: 4,
-                          children: [
-                            TextButton(
-                              onPressed: updating ||
-                                      item.status == ConcessionStatus.approved
-                                  ? null
-                                  : () => _updateConcessionStatus(
-                                        item.id,
-                                        ConcessionStatus.approved,
-                                      ),
-                              child: Text(updating ? 'Saving' : 'Approve'),
-                            ),
-                            TextButton(
-                              onPressed: updating ||
-                                      item.status == ConcessionStatus.rejected
-                                  ? null
-                                  : () => _updateConcessionStatus(
-                                        item.id,
-                                        ConcessionStatus.rejected,
-                                      ),
-                              child: const Text('Reject'),
-                            ),
-                          ],
+                    return DataRow(
+                      cells: [
+                        DataCell(Text(studentName)),
+                        DataCell(Text(item.category)),
+                        DataCell(Text(item.fundingSource)),
+                        DataCell(Text(moneyFormat.format(item.amount))),
+                        DataCell(
+                          StatusPill(
+                            label: item.status.label,
+                            color: statusColor(item.status.label),
+                          ),
                         ),
-                      ),
-                    ]);
+                        DataCell(
+                          item.status == ConcessionStatus.submitted
+                              ? Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      onPressed: updating
+                                          ? null
+                                          : () => _updateConcessionStatus(
+                                                item.id,
+                                                ConcessionStatus.approved,
+                                              ),
+                                      icon: const Icon(Icons.check_circle_outlined),
+                                      color: const Color(0xFF0D9488),
+                                      tooltip: 'Approve',
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    IconButton(
+                                      onPressed: updating
+                                          ? null
+                                          : () => _updateConcessionStatus(
+                                                item.id,
+                                                ConcessionStatus.rejected,
+                                              ),
+                                      icon: const Icon(Icons.cancel_outlined),
+                                      color: const Color(0xFFE11D48),
+                                      tooltip: 'Reject',
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                    ),
+                                  ],
+                                )
+                              : const SizedBox.shrink(),
+                        ),
+                      ],
+                    );
                   }).toList(),
                 ),
               ),
-            ),
-          ],
+            );
+
+            return stacked
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [form, const SizedBox(height: 18), queue],
+                  )
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(width: 410, child: form),
+                      const SizedBox(width: 18),
+                      Expanded(child: queue),
+                    ],
+                  );
+          },
         ),
       ],
     );
@@ -197,7 +271,9 @@ class _ConcessionsScreenState extends ConsumerState<ConcessionsScreen> {
     try {
       final service = ref.read(supabaseFinanceServiceProvider);
       if (service == null) {
-        ref.read(appControllerProvider.notifier).submitConcession(
+        ref
+            .read(appControllerProvider.notifier)
+            .submitConcession(
               studentId: selectedStudentId,
               category: category,
               concessionType: '$category fee support',

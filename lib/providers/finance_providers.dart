@@ -13,8 +13,10 @@ final visibleStudentsProvider = Provider<List<Student>>((ref) {
   return selectVisibleStudents(state);
 });
 
-final financeSummaryProvider =
-    Provider.family<StudentFinanceSummary, String>((ref, studentId) {
+final financeSummaryProvider = Provider.family<StudentFinanceSummary, String>((
+  ref,
+  studentId,
+) {
   final state = ref.watch(appControllerProvider);
   return calculateFinanceFor(state, studentId);
 });

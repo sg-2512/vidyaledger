@@ -1,4 +1,15 @@
-insert into schools (id, name, board, state, district, school_type, academic_year)
+insert into schools (
+  id,
+  name,
+  board,
+  state,
+  district,
+  school_type,
+  academic_year,
+  address,
+  contact_email,
+  contact_phone
+)
 values (
   '00000000-0000-0000-0000-000000000001',
   'Vidya Public School',
@@ -6,8 +17,27 @@ values (
   'Rajasthan',
   'Jaipur',
   'Unaided Private School',
-  '2026-27'
+  '2026-27',
+  'Sector 12, Jaipur, Rajasthan',
+  'office@vidyapublic.demo',
+  '+91 141 400 2026'
 );
+
+insert into class_sections (
+  id,
+  school_id,
+  class_name,
+  section,
+  class_teacher,
+  room_label,
+  capacity,
+  active
+)
+values
+  ('51000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', '6', 'A', 'Nisha Verma', 'Room 201', 45, true),
+  ('51000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', '7', 'A', 'Anil Sharma', 'Room 205', 45, true),
+  ('51000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000001', '8', 'B', 'Farah Khan', 'Room 302', 42, true),
+  ('51000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000001', '9', 'C', 'Ravi Meena', 'Room 401', 40, true);
 
 insert into guardians (id, school_id, name, phone, email, address)
 values

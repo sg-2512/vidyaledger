@@ -32,11 +32,9 @@ class _FeeEngineScreenState extends ConsumerState<FeeEngineScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
-    final classNames = state.students
-        .map((student) => student.className)
-        .toSet()
-        .toList()
-      ..sort();
+    final classNames =
+        state.students.map((student) => student.className).toSet().toList()
+          ..sort();
     if (state.feeHeads.isNotEmpty && selectedFeeHeadId == null) {
       selectedFeeHeadId = state.feeHeads.first.id;
     }
@@ -49,83 +47,101 @@ class _FeeEngineScreenState extends ConsumerState<FeeEngineScreen> {
       children: [
         const PageHeader(
           title: 'Dynamic Fee Engine',
-          subtitle: 'Create fee heads, rules, due dates, late fee policies, and class-wise demands.',
+          subtitle:
+              'Create fee heads, rules, due dates, late fee policies, and class-wise demands.',
         ),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 390,
-              child: SectionCard(
-                title: 'Generate Fee Demand',
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: titleController,
-                      decoration: const InputDecoration(labelText: 'Fee rule title'),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final stacked = constraints.maxWidth < 900;
+            final form = SectionCard(
+              title: 'Generate Fee Demand',
+              child: Column(
+                children: [
+                  TextField(
+                    controller: titleController,
+                    decoration: const InputDecoration(
+                      labelText: 'Fee rule title',
                     ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      initialValue: selectedFeeHeadId,
-                      decoration: const InputDecoration(labelText: 'Fee head'),
-                      items: state.feeHeads
-                          .map((head) => DropdownMenuItem(value: head.id, child: Text(head.name)))
-                          .toList(),
-                      onChanged: (value) => setState(() => selectedFeeHeadId = value),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedFeeHeadId,
+                    decoration: const InputDecoration(labelText: 'Fee head'),
+                    items: state.feeHeads
+                        .map(
+                          (head) => DropdownMenuItem(
+                            value: head.id,
+                            child: Text(head.name),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) =>
+                        setState(() => selectedFeeHeadId = value),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedClass,
+                    decoration: const InputDecoration(
+                      labelText: 'Assign to class',
                     ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      initialValue: selectedClass,
-                      decoration: const InputDecoration(labelText: 'Assign to class'),
-                      items: classNames
-                          .map((className) => DropdownMenuItem(value: className, child: Text('Class $className')))
-                          .toList(),
-                      onChanged: (value) => setState(() => selectedClass = value ?? selectedClass),
+                    items: classNames
+                        .map(
+                          (className) => DropdownMenuItem(
+                            value: className,
+                            child: Text('Class $className'),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) => setState(
+                      () => selectedClass = value ?? selectedClass,
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: amountController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Amount'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: amountController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Amount'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: lateFeeController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Late fee amount',
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: lateFeeController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Late fee amount'),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: generating ||
-                                selectedFeeHeadId == null ||
-                                classNames.isEmpty
-                            ? null
-                            : _generateFeeDemand,
-                        icon: generating
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Icon(Icons.add),
-                        label: Text(
-                          generating ? 'Generating...' : 'Generate Demand',
-                        ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed:
+                          generating ||
+                              selectedFeeHeadId == null ||
+                              classNames.isEmpty
+                          ? null
+                          : _generateFeeDemand,
+                      icon: generating
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.add),
+                      label: Text(
+                        generating ? 'Generating...' : 'Generate Demand',
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(width: 18),
-            Expanded(
-              child: SectionCard(
-                title: 'Active Fee Rules',
+            );
+            final rules = SectionCard(
+              title: 'Active Fee Rules',
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
                 child: DataTable(
                   columns: const [
                     DataColumn(label: Text('Rule')),
@@ -135,19 +151,36 @@ class _FeeEngineScreenState extends ConsumerState<FeeEngineScreen> {
                     DataColumn(label: Text('Due')),
                   ],
                   rows: state.feeRules.map((rule) {
-                    final head = state.feeHeads.firstWhere((item) => item.id == rule.feeHeadId);
-                    return DataRow(cells: [
-                      DataCell(Text(rule.title)),
-                      DataCell(Text(head.name)),
-                      DataCell(Text(rule.scopeLabel)),
-                      DataCell(Text(moneyFormat.format(rule.amount))),
-                      DataCell(Text(DateFormat.yMMMd().format(rule.dueDate))),
-                    ]);
+                    final head = state.feeHeads.firstWhere(
+                      (item) => item.id == rule.feeHeadId,
+                    );
+                    return DataRow(
+                      cells: [
+                        DataCell(Text(rule.title)),
+                        DataCell(Text(head.name)),
+                        DataCell(Text(rule.scopeLabel)),
+                        DataCell(Text(moneyFormat.format(rule.amount))),
+                        DataCell(Text(DateFormat.yMMMd().format(rule.dueDate))),
+                      ],
+                    );
                   }).toList(),
                 ),
               ),
-            ),
-          ],
+            );
+            return stacked
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [form, const SizedBox(height: 18), rules],
+                  )
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(width: 390, child: form),
+                      const SizedBox(width: 18),
+                      Expanded(child: rules),
+                    ],
+                  );
+          },
         ),
         const SizedBox(height: 18),
         SectionCard(
@@ -158,7 +191,9 @@ class _FeeEngineScreenState extends ConsumerState<FeeEngineScreen> {
             children: state.feeHeads
                 .map(
                   (head) => Chip(
-                    avatar: Icon(head.refundable ? Icons.replay : Icons.receipt_long),
+                    avatar: Icon(
+                      head.refundable ? Icons.replay : Icons.receipt_long,
+                    ),
                     label: Text('${head.name} | ${head.ledger}'),
                   ),
                 )
@@ -191,7 +226,9 @@ class _FeeEngineScreenState extends ConsumerState<FeeEngineScreen> {
     try {
       final service = ref.read(supabaseFinanceServiceProvider);
       if (service == null) {
-        ref.read(appControllerProvider.notifier).generateFeeDemand(
+        ref
+            .read(appControllerProvider.notifier)
+            .generateFeeDemand(
               feeHeadId: feeHeadId,
               title: title,
               amount: amount,
@@ -228,9 +265,9 @@ class _FeeEngineScreenState extends ConsumerState<FeeEngineScreen> {
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fee generation failed: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Fee generation failed: $error')));
     } finally {
       if (mounted) setState(() => generating = false);
     }

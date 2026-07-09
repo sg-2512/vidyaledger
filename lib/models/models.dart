@@ -66,6 +66,10 @@ class SchoolProfile {
     required this.district,
     required this.schoolType,
     required this.academicYear,
+    this.address = '',
+    this.contactEmail = '',
+    this.contactPhone = '',
+    this.logoUrl = '',
   });
 
   final String id;
@@ -75,8 +79,80 @@ class SchoolProfile {
   final String district;
   final String schoolType;
   final String academicYear;
+  final String address;
+  final String contactEmail;
+  final String contactPhone;
+  final String logoUrl;
 
   String get locationLabel => '$district, $state';
+
+  SchoolProfile copyWith({
+    String? name,
+    String? board,
+    String? state,
+    String? district,
+    String? schoolType,
+    String? academicYear,
+    String? address,
+    String? contactEmail,
+    String? contactPhone,
+    String? logoUrl,
+  }) {
+    return SchoolProfile(
+      id: id,
+      name: name ?? this.name,
+      board: board ?? this.board,
+      state: state ?? this.state,
+      district: district ?? this.district,
+      schoolType: schoolType ?? this.schoolType,
+      academicYear: academicYear ?? this.academicYear,
+      address: address ?? this.address,
+      contactEmail: contactEmail ?? this.contactEmail,
+      contactPhone: contactPhone ?? this.contactPhone,
+      logoUrl: logoUrl ?? this.logoUrl,
+    );
+  }
+}
+
+class ClassSection {
+  const ClassSection({
+    required this.id,
+    required this.className,
+    required this.section,
+    required this.classTeacher,
+    required this.roomLabel,
+    required this.capacity,
+    required this.active,
+  });
+
+  final String id;
+  final String className;
+  final String section;
+  final String classTeacher;
+  final String roomLabel;
+  final int capacity;
+  final bool active;
+
+  String get label => 'Class $className-$section';
+
+  ClassSection copyWith({
+    String? className,
+    String? section,
+    String? classTeacher,
+    String? roomLabel,
+    int? capacity,
+    bool? active,
+  }) {
+    return ClassSection(
+      id: id,
+      className: className ?? this.className,
+      section: section ?? this.section,
+      classTeacher: classTeacher ?? this.classTeacher,
+      roomLabel: roomLabel ?? this.roomLabel,
+      capacity: capacity ?? this.capacity,
+      active: active ?? this.active,
+    );
+  }
 }
 
 class AppUser {

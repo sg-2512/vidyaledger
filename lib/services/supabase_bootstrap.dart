@@ -2,7 +2,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SupabaseBootstrap {
   static const url = String.fromEnvironment('SUPABASE_URL');
-  static const publishableKey = String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY');
+  static const publishableKey = String.fromEnvironment(
+    'SUPABASE_PUBLISHABLE_KEY',
+  );
 
   static bool get isConfigured => url.isNotEmpty && publishableKey.isNotEmpty;
 

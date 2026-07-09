@@ -29,6 +29,27 @@ select
   '+91 98765 ' || lpad((10000 + n)::text, 5, '0') as phone
 from generate_series(5, 50) as generated(n);
 
+insert into class_sections (
+  school_id,
+  class_name,
+  section,
+  class_teacher,
+  room_label,
+  capacity,
+  active
+)
+select distinct
+  school_id,
+  class_name,
+  section,
+  'Class ' || class_name || '-' || section || ' Teacher',
+  'Room ' || class_name || section,
+  45,
+  true
+from large_seed_students
+on conflict (school_id, class_name, section) do update set
+  active = true;
+
 insert into guardians (id, school_id, name, phone, email, address)
 select
   guardian_id,
@@ -384,4 +405,5 @@ select
   (select count(*) from fee_demands where school_id = '00000000-0000-0000-0000-000000000001') as fee_demand_count,
   (select count(*) from concessions where school_id = '00000000-0000-0000-0000-000000000001') as concession_count,
   (select count(*) from payments where school_id = '00000000-0000-0000-0000-000000000001') as payment_count,
+  (select count(*) from class_sections where school_id = '00000000-0000-0000-0000-000000000001') as class_section_count,
   (select count(*) from ledger_entries where school_id = '00000000-0000-0000-0000-000000000001') as ledger_entry_count;

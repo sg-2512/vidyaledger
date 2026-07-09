@@ -6,6 +6,7 @@ import '../models/models.dart';
 import '../providers/app_state.dart';
 import '../providers/supabase_providers.dart';
 import '../security/role_access.dart';
+import '../widgets/notifications_panel.dart';
 
 class ShellScreen extends ConsumerWidget {
   const ShellScreen({required this.child, super.key});
@@ -28,6 +29,7 @@ class ShellScreen extends ConsumerWidget {
       _NavItem('Payments', Icons.payments_outlined, '/payments'),
       _NavItem('Reconciliation', Icons.fact_check_outlined, '/reconciliation'),
       _NavItem('Reports', Icons.picture_as_pdf_outlined, '/reports'),
+      _NavItem('Settings', Icons.settings_outlined, '/settings'),
     ].where((item) => canAccessRoute(user.role, item.path)).toList();
 
     Future<void> logout() async {
@@ -49,6 +51,7 @@ class ShellScreen extends ConsumerWidget {
               backgroundColor: Colors.white,
               surfaceTintColor: Colors.white,
               actions: [
+                const NotificationBell(),
                 IconButton(
                   tooltip: 'Logout',
                   onPressed: logout,
@@ -207,6 +210,8 @@ class _TopBar extends StatelessWidget {
                 ),
               ],
               const SizedBox(width: 8),
+              const NotificationBell(),
+              const SizedBox(width: 4),
               IconButton(
                 tooltip: 'Logout',
                 onPressed: onLogout,
