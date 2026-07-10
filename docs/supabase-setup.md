@@ -44,8 +44,9 @@ Riverpod providers for the backend adapter live in
 
 When `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` are provided, the login
 screen switches to Supabase Auth, loads the backend snapshot into Riverpod, and
-persists payment/cheque actions back to Supabase. Without these keys, the app
-keeps the seeded demo-mode role buttons.
+persists fee generation, concession, reconciliation, payment, and cheque
+lifecycle actions back to Supabase. Without these keys, the app keeps the
+seeded demo-mode role buttons.
 
 ## Recommended Wiring Order
 
@@ -55,7 +56,15 @@ keeps the seeded demo-mode role buttons.
 4. Insert matching `public.users` rows with the Auth UUIDs.
 5. Run `seed.sql` to create demo users, students, fee rules, demands,
    concessions, payments, reconciliation rows, and the starter audit log.
-6. Start Flutter with `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`.
-7. Login with one of the Supabase Auth demo users.
-8. Verify dashboard data, payment recording, cheque status changes, receipts,
-   and audit logs.
+6. For existing projects, run the upgrade SQL files listed in `README.md`,
+   including `upgrade_cheque_lifecycle.sql` and
+   `upgrade_payment_requests.sql`.
+7. Start Flutter with `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`.
+8. Login with one of the Supabase Auth demo users.
+9. Verify dashboard data, fee generation, concession approvals, payment
+   recording, cheque clear/bounce ledger postings, reconciliation decisions,
+   UPI/gateway payment requests, receipts, and audit logs.
+
+If SQL Editor shows `type "user_role" already exists`, the base schema has
+already been run in that project. See `docs/supabase-troubleshooting.md` before
+rerunning anything.

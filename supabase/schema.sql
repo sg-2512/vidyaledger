@@ -6,6 +6,8 @@ create type payment_mode as enum ('upi', 'cash', 'cheque', 'bank_transfer');
 create type payment_status as enum ('pending', 'completed', 'bounced', 'reversed');
 create type cheque_status as enum ('received', 'deposited', 'cleared', 'bounced');
 create type reconciliation_status as enum ('unmatched', 'matched', 'duplicate', 'partial', 'overpaid');
+create type payment_provider as enum ('upi_intent', 'razorpay', 'cashfree', 'phonepe', 'payu');
+create type payment_request_status as enum ('created', 'shared', 'paid', 'expired', 'failed', 'cancelled');
 
 create table schools (
   id uuid primary key default gen_random_uuid(),
@@ -157,6 +159,24 @@ create table receipt_sequences (
   next_no integer not null default 1 check (next_no > 0),
   updated_at timestamptz not null default now(),
   primary key (school_id, academic_year)
+);
+
+create table payment_requests (
+  id uuid primary key default gen_random_uuid(),
+  school_id uuid not null references schools(id) on delete cascade,
+  student_id uuid not null references students(id),
+  amount numeric(12, 2) not null check (amount > 0),
+  provider payment_provider not null,
+  status payment_request_status not null default 'created',
+  request_no text not null,
+  checkout_url text not null,
+  upi_uri text,
+  gateway_order_id text,
+  gateway_payment_id text,
+  note text,
+  expires_at timestamptz,
+  created_at timestamptz not null default now(),
+  unique (school_id, request_no)
 );
 
 create table ledger_entries (
@@ -423,6 +443,270 @@ $$;
 
 grant execute on function issue_next_receipt_no(uuid) to authenticated;
 grant execute on function record_payment_with_receipt(uuid, numeric, text, text, text, text) to authenticated;
+
+create or replace function update_cheque_status_with_ledger(
+  p_payment_id uuid,
+  p_cheque_status text
+)
+returns payments
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor users%rowtype;
+  v_payment payments%rowtype;
+  v_old_status payment_status;
+  v_new_cheque_status cheque_status;
+  v_new_payment_status payment_status;
+  v_voucher_no text;
+begin
+  select *
+  into v_actor
+  from users
+  where auth_user_id = auth.uid();
+
+  if v_actor.id is null then
+    raise exception 'No VidyaLedger user is linked to this Supabase account.';
+  end if;
+
+  if v_actor.role not in ('admin', 'principal', 'accountant', 'clerk') then
+    raise exception 'This role cannot update cheque status.';
+  end if;
+
+  v_new_cheque_status := p_cheque_status::cheque_status;
+  v_new_payment_status := case
+    when v_new_cheque_status = 'cleared' then 'completed'::payment_status
+    when v_new_cheque_status = 'bounced' then 'bounced'::payment_status
+    else 'pending'::payment_status
+  end;
+
+  select *
+  into v_payment
+  from payments
+  where id = p_payment_id
+    and school_id = v_actor.school_id
+    and mode = 'cheque';
+
+  if v_payment.id is null then
+    raise exception 'Cheque payment was not found for this school.';
+  end if;
+
+  v_old_status := v_payment.status;
+
+  update payments
+  set status = v_new_payment_status,
+      cheque_status = v_new_cheque_status,
+      note = 'Cheque ' || v_new_cheque_status::text
+  where id = p_payment_id
+    and school_id = v_actor.school_id
+  returning * into v_payment;
+
+  if v_new_cheque_status = 'cleared' and v_old_status <> 'completed' then
+    v_voucher_no := 'CHQCLR-' || replace(v_payment.receipt_no, '/', '-');
+
+    insert into ledger_entries (
+      school_id,
+      voucher_no,
+      debit_ledger,
+      credit_ledger,
+      amount,
+      entry_date,
+      narration
+    )
+    values (
+      v_actor.school_id,
+      v_voucher_no,
+      'Bank Account',
+      'Cheque Clearing',
+      v_payment.amount,
+      current_date,
+      'Cheque cleared for receipt ' || v_payment.receipt_no || ' by ' || v_actor.name
+    );
+
+    update reconciliation_items
+    set status = 'matched',
+        exception_reason = ''
+    where school_id = v_actor.school_id
+      and payment_id = v_payment.id;
+  elsif v_new_cheque_status = 'bounced' and v_old_status <> 'bounced' then
+    v_voucher_no := 'CHQBNC-' || replace(v_payment.receipt_no, '/', '-');
+
+    insert into ledger_entries (
+      school_id,
+      voucher_no,
+      debit_ledger,
+      credit_ledger,
+      amount,
+      entry_date,
+      narration
+    )
+    values (
+      v_actor.school_id,
+      v_voucher_no,
+      'Student Fee Receivable',
+      'Cheque Clearing',
+      v_payment.amount,
+      current_date,
+      'Cheque bounced for receipt ' || v_payment.receipt_no || ' by ' || v_actor.name
+    );
+
+    update reconciliation_items
+    set status = 'unmatched',
+        exception_reason = 'Cheque bounced; receivable reopened'
+    where school_id = v_actor.school_id
+      and payment_id = v_payment.id;
+  end if;
+
+  insert into audit_logs (
+    school_id,
+    user_id,
+    actor,
+    action,
+    object_type,
+    object_id
+  )
+  values (
+    v_actor.school_id,
+    v_actor.id,
+    v_actor.name,
+    'Marked cheque payment ' || v_payment.receipt_no || ' as ' || v_new_cheque_status::text,
+    'payment',
+    v_payment.id
+  );
+
+  return v_payment;
+end;
+$$;
+
+grant execute on function update_cheque_status_with_ledger(uuid, text) to authenticated;
+
+create or replace function create_payment_request(
+  p_student_id uuid,
+  p_amount numeric,
+  p_provider text,
+  p_note text default ''
+)
+returns payment_requests
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor users%rowtype;
+  v_student students%rowtype;
+  v_school schools%rowtype;
+  v_provider payment_provider;
+  v_request payment_requests%rowtype;
+  v_request_no text;
+  v_upi_uri text;
+  v_checkout_url text;
+  v_gateway_order_id text;
+  v_note text;
+begin
+  select *
+  into v_actor
+  from users
+  where auth_user_id = auth.uid();
+
+  if v_actor.id is null then
+    raise exception 'No VidyaLedger user is linked to this Supabase account.';
+  end if;
+
+  if v_actor.role not in ('admin', 'principal', 'accountant', 'clerk') then
+    raise exception 'This role cannot create payment requests.';
+  end if;
+
+  if p_amount is null or p_amount <= 0 then
+    raise exception 'Payment request amount must be greater than zero.';
+  end if;
+
+  select *
+  into v_student
+  from students
+  where id = p_student_id
+    and school_id = v_actor.school_id
+    and status = 'active';
+
+  if v_student.id is null then
+    raise exception 'Student is not active in your school.';
+  end if;
+
+  select *
+  into v_school
+  from schools
+  where id = v_actor.school_id;
+
+  v_provider := p_provider::payment_provider;
+  v_note := nullif(trim(coalesce(p_note, '')), '');
+  v_request_no := 'VPR/' ||
+    coalesce(substring(v_school.academic_year from '^[0-9]{4}'), to_char(current_date, 'YYYY')) ||
+    '/' ||
+    upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 8));
+
+  if v_provider = 'upi_intent' then
+    v_upi_uri :=
+      'upi://pay?pa=vidyaledger.demo%40upi' ||
+      '&pn=' || replace(v_school.name, ' ', '%20') ||
+      '&am=' || to_char(p_amount, 'FM9999999990.00') ||
+      '&cu=INR' ||
+      '&tn=' || replace(v_request_no || coalesce(' ' || v_note, ''), ' ', '%20');
+    v_checkout_url := v_upi_uri;
+  else
+    v_gateway_order_id := lower(v_provider::text) || '_' || replace(gen_random_uuid()::text, '-', '');
+    v_checkout_url := 'https://payments.vidyaledger.example/checkout/' || v_gateway_order_id;
+  end if;
+
+  insert into payment_requests (
+    school_id,
+    student_id,
+    amount,
+    provider,
+    status,
+    request_no,
+    checkout_url,
+    upi_uri,
+    gateway_order_id,
+    note,
+    expires_at
+  )
+  values (
+    v_actor.school_id,
+    p_student_id,
+    p_amount,
+    v_provider,
+    'created',
+    v_request_no,
+    v_checkout_url,
+    v_upi_uri,
+    v_gateway_order_id,
+    v_note,
+    now() + interval '3 days'
+  )
+  returning * into v_request;
+
+  insert into audit_logs (
+    school_id,
+    user_id,
+    actor,
+    action,
+    object_type,
+    object_id
+  )
+  values (
+    v_actor.school_id,
+    v_actor.id,
+    v_actor.name,
+    'Created ' || v_provider::text || ' payment request ' || v_request_no,
+    'payment_request',
+    v_request.id
+  );
+
+  return v_request;
+end;
+$$;
+
+grant execute on function create_payment_request(uuid, numeric, text, text) to authenticated;
 
 create or replace function generate_fee_demand_for_class(
   p_fee_head_id uuid,
@@ -967,6 +1251,7 @@ alter table concessions enable row level security;
 alter table payments enable row level security;
 alter table receipts enable row level security;
 alter table receipt_sequences enable row level security;
+alter table payment_requests enable row level security;
 alter table ledger_entries enable row level security;
 alter table reconciliation_items enable row level security;
 alter table audit_logs enable row level security;
@@ -1089,6 +1374,22 @@ create policy "staff can manage receipt sequences"
 on receipt_sequences for all
 using (school_id = current_user_school_id() and current_user_role() in ('admin', 'principal', 'accountant'))
 with check (school_id = current_user_school_id() and current_user_role() in ('admin', 'principal', 'accountant'));
+
+create policy "staff can manage payment requests"
+on payment_requests for all
+using (school_id = current_user_school_id() and current_user_role() in ('admin', 'principal', 'accountant', 'clerk'))
+with check (school_id = current_user_school_id() and current_user_role() in ('admin', 'principal', 'accountant', 'clerk'));
+
+create policy "parents can read own payment requests"
+on payment_requests for select
+using (
+  school_id = current_user_school_id()
+  and student_id in (
+    select id from students where guardian_id in (
+      select guardian_id from users where auth_user_id = auth.uid()
+    )
+  )
+);
 
 create policy "staff can manage ledger"
 on ledger_entries for all

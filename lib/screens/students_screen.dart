@@ -8,6 +8,7 @@ import '../providers/app_state.dart';
 import '../providers/finance_providers.dart';
 import '../providers/supabase_providers.dart';
 import '../services/report_service.dart';
+import '../utils/csv_utils.dart';
 import '../widgets/common.dart';
 
 class StudentsScreen extends ConsumerStatefulWidget {
@@ -23,6 +24,7 @@ class _StudentsScreenState extends ConsumerState<StudentsScreen> {
   String sectionFilter = 'All';
   String categoryFilter = 'All';
   bool addingStudent = false;
+  bool importingStudents = false;
 
   @override
   Widget build(BuildContext context) {
@@ -84,8 +86,26 @@ class _StudentsScreenState extends ConsumerState<StudentsScreen> {
                 label: const Text('Export Register'),
               ),
               if (canManageStudents)
+                OutlinedButton.icon(
+                  onPressed: importingStudents || addingStudent
+                      ? null
+                      : _openStudentImportDialog,
+                  icon: importingStudents
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.upload_file_outlined),
+                  label: Text(
+                    importingStudents ? 'Importing...' : 'Import CSV',
+                  ),
+                ),
+              if (canManageStudents)
                 FilledButton.icon(
-                  onPressed: addingStudent ? null : _openAddStudentDialog,
+                  onPressed: addingStudent || importingStudents
+                      ? null
+                      : _openAddStudentDialog,
                   icon: const Icon(Icons.person_add_alt_1),
                   label: const Text('Add Student'),
                 ),
@@ -220,9 +240,11 @@ class _StudentsScreenState extends ConsumerState<StudentsScreen> {
   }
 
   List<String> _options(Iterable<String> values) {
-    final sorted =
-        values.where((value) => value.trim().isNotEmpty).toSet().toList();
-    
+    final sorted = values
+        .where((value) => value.trim().isNotEmpty)
+        .toSet()
+        .toList();
+
     sorted.sort((a, b) {
       final aNum = int.tryParse(a);
       final bNum = int.tryParse(b);
@@ -231,7 +253,7 @@ class _StudentsScreenState extends ConsumerState<StudentsScreen> {
       }
       return a.compareTo(b);
     });
-    
+
     return ['All', ...sorted];
   }
 
@@ -313,6 +335,73 @@ class _StudentsScreenState extends ConsumerState<StudentsScreen> {
       return false;
     } finally {
       if (mounted) setState(() => addingStudent = false);
+    }
+  }
+
+  Future<void> _openStudentImportDialog() async {
+    final existingAdmissions = ref
+        .read(appControllerProvider)
+        .students
+        .map((student) => student.admissionNo.toLowerCase())
+        .toSet();
+    final importRows = await showDialog<List<_StudentFormData>>(
+      context: context,
+      builder: (context) =>
+          _StudentImportDialog(existingAdmissionNos: existingAdmissions),
+    );
+    if (importRows == null || importRows.isEmpty) return;
+
+    setState(() => importingStudents = true);
+    try {
+      final service = ref.read(supabaseFinanceServiceProvider);
+      if (service == null) {
+        final controller = ref.read(appControllerProvider.notifier);
+        for (final row in importRows) {
+          controller.addStudentWithGuardian(
+            admissionNo: row.admissionNo,
+            studentName: row.studentName,
+            className: row.className,
+            section: row.section,
+            category: row.category,
+            studentPhone: row.studentPhone,
+            guardianName: row.guardianName,
+            guardianPhone: row.guardianPhone,
+            guardianEmail: row.guardianEmail,
+            guardianAddress: row.guardianAddress,
+          );
+        }
+      } else {
+        for (final row in importRows) {
+          await service.addStudentWithGuardian(
+            admissionNo: row.admissionNo,
+            studentName: row.studentName,
+            className: row.className,
+            section: row.section,
+            category: row.category,
+            studentPhone: row.studentPhone,
+            guardianName: row.guardianName,
+            guardianPhone: row.guardianPhone,
+            guardianEmail: row.guardianEmail,
+            guardianAddress: row.guardianAddress,
+          );
+        }
+        await refreshAppStateFromSupabase(
+          ref,
+          currentUser: ref.read(appControllerProvider).currentUser,
+        );
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Imported ${importRows.length} students.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Student import failed: $error')));
+    } finally {
+      if (mounted) setState(() => importingStudents = false);
     }
   }
 }
@@ -481,6 +570,272 @@ class _StudentFormData {
   final String guardianPhone;
   final String guardianEmail;
   final String guardianAddress;
+}
+
+class _StudentImportDraft {
+  const _StudentImportDraft({
+    required this.rowNumber,
+    required this.errors,
+    this.data,
+  });
+
+  final int rowNumber;
+  final List<String> errors;
+  final _StudentFormData? data;
+
+  bool get isValid => data != null && errors.isEmpty;
+}
+
+class _StudentImportDialog extends StatefulWidget {
+  const _StudentImportDialog({required this.existingAdmissionNos});
+
+  final Set<String> existingAdmissionNos;
+
+  @override
+  State<_StudentImportDialog> createState() => _StudentImportDialogState();
+}
+
+class _StudentImportDialogState extends State<_StudentImportDialog> {
+  final csvController = TextEditingController(text: _studentCsvSample);
+
+  @override
+  void dispose() {
+    csvController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final drafts = _parseStudentCsvDrafts(
+      csvController.text,
+      widget.existingAdmissionNos,
+    );
+    final validRows = drafts.where((draft) => draft.isValid).toList();
+    final invalidRows = drafts.where((draft) => !draft.isValid).toList();
+
+    return AlertDialog(
+      title: const Text('Import Students from CSV'),
+      content: SizedBox(
+        width: 760,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.72,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: csvController,
+                  minLines: 8,
+                  maxLines: 12,
+                  onChanged: (_) => setState(() {}),
+                  style: const TextStyle(fontFamily: 'monospace'),
+                  decoration: const InputDecoration(
+                    labelText: 'CSV rows',
+                    hintText:
+                        'admission_no,student_name,class,section,guardian_name,guardian_phone',
+                    alignLabelWithHint: true,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    StatusPill(
+                      label: '${validRows.length} ready',
+                      color: const Color(0xFF0F766E),
+                    ),
+                    StatusPill(
+                      label: '${invalidRows.length} needs fix',
+                      color: invalidRows.isEmpty
+                          ? const Color(0xFF0F766E)
+                          : const Color(0xFFB45309),
+                    ),
+                  ],
+                ),
+                if (invalidRows.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  ...invalidRows
+                      .take(5)
+                      .map(
+                        (draft) => Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Text(
+                            'Row ${draft.rowNumber}: ${draft.errors.join(', ')}',
+                            style: const TextStyle(
+                              color: Color(0xFFB45309),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                ],
+                if (validRows.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Preview',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 8),
+                  ...validRows.take(4).map((draft) {
+                    final data = draft.data!;
+                    return ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: const CircleAvatar(
+                        backgroundColor: Color(0xFFE0F2F1),
+                        child: Icon(
+                          Icons.person_outline,
+                          color: Color(0xFF0F766E),
+                        ),
+                      ),
+                      title: Text('${data.studentName} (${data.admissionNo})'),
+                      subtitle: Text(
+                        'Class ${data.className}-${data.section} | ${data.guardianName}',
+                      ),
+                    );
+                  }),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton.icon(
+          onPressed: validRows.isEmpty
+              ? null
+              : () => Navigator.of(
+                  context,
+                ).pop(validRows.map((row) => row.data!).toList()),
+          icon: const Icon(Icons.upload_file_outlined),
+          label: Text('Import ${validRows.length}'),
+        ),
+      ],
+    );
+  }
+}
+
+const _studentCsvSample =
+    'admission_no,student_name,class,section,category,student_phone,guardian_name,guardian_phone,guardian_email,guardian_address\n'
+    'NEW-2026-001,Aarav Mehta,7,A,General,9876500101,Ritika Mehta,9876500100,parent1@example.com,Indore\n'
+    'NEW-2026-002,Diya Shah,8,B,RTE,,Kunal Shah,9876500200,parent2@example.com,Bhopal';
+
+List<_StudentImportDraft> _parseStudentCsvDrafts(
+  String csv,
+  Set<String> existingAdmissionNos,
+) {
+  final records = parseCsvRecords(csv);
+  final seenAdmissionNos = <String>{};
+  final drafts = <_StudentImportDraft>[];
+
+  for (final record in records) {
+    final admissionNo = record.firstValue(const [
+      'admission_no',
+      'admissionNo',
+      'admission',
+      'admission_number',
+    ]);
+    final studentName = record.firstValue(const [
+      'student_name',
+      'studentName',
+      'student',
+      'name',
+    ]);
+    final className = record.firstValue(const [
+      'class',
+      'class_name',
+      'className',
+      'grade',
+    ]);
+    final section = record.firstValue(const ['section', 'sec']);
+    final category = record.firstValue(const ['category', 'quota']).isEmpty
+        ? 'General'
+        : record.firstValue(const ['category', 'quota']);
+    final studentPhone = record.firstValue(const [
+      'student_phone',
+      'studentPhone',
+      'phone',
+    ]);
+    final guardianName = record.firstValue(const [
+      'guardian_name',
+      'guardianName',
+      'parent_name',
+      'parentName',
+    ]);
+    final guardianPhone = record.firstValue(const [
+      'guardian_phone',
+      'guardianPhone',
+      'parent_phone',
+      'parentPhone',
+      'mobile',
+    ]);
+    final guardianEmail = record.firstValue(const [
+      'guardian_email',
+      'guardianEmail',
+      'parent_email',
+      'parentEmail',
+      'email',
+    ]);
+    final guardianAddress = record.firstValue(const [
+      'guardian_address',
+      'guardianAddress',
+      'address',
+    ]);
+
+    final errors = <String>[];
+    void requireValue(String value, String label) {
+      if (value.trim().isEmpty) errors.add('$label missing');
+    }
+
+    requireValue(admissionNo, 'admission no.');
+    requireValue(studentName, 'student name');
+    requireValue(className, 'class');
+    requireValue(section, 'section');
+    requireValue(guardianName, 'guardian name');
+    requireValue(guardianPhone, 'guardian phone');
+
+    final normalizedAdmission = admissionNo.toLowerCase();
+    if (normalizedAdmission.isNotEmpty) {
+      if (existingAdmissionNos.contains(normalizedAdmission)) {
+        errors.add('admission already exists');
+      }
+      if (!seenAdmissionNos.add(normalizedAdmission)) {
+        errors.add('duplicate admission in CSV');
+      }
+    }
+
+    drafts.add(
+      _StudentImportDraft(
+        rowNumber: record.rowNumber,
+        errors: errors,
+        data: errors.isEmpty
+            ? _StudentFormData(
+                admissionNo: admissionNo,
+                studentName: studentName,
+                className: className,
+                section: section.toUpperCase(),
+                category: category,
+                studentPhone: studentPhone,
+                guardianName: guardianName,
+                guardianPhone: guardianPhone,
+                guardianEmail: guardianEmail,
+                guardianAddress: guardianAddress,
+              )
+            : null,
+      ),
+    );
+  }
+
+  return drafts;
 }
 
 class _AddStudentDialog extends StatefulWidget {

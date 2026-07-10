@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 
@@ -59,13 +60,16 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
     final payments = state.payments
         .where((p) => p.studentId == student.id)
         .toList();
+    final paymentRequests = state.paymentRequests
+        .where((request) => request.studentId == student.id)
+        .toList();
 
     final width = MediaQuery.of(context).size.width;
     final statColumns = width > 1100
         ? 3
         : width > 720
-            ? 2
-            : 1;
+        ? 2
+        : 1;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -103,8 +107,9 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
               icon: summary.pending > 0
                   ? Icons.warning_amber_rounded
                   : Icons.verified_user_rounded,
-              accent:
-                  summary.pending > 0 ? const Color(0xFFB45309) : const Color(0xFF14B8A6),
+              accent: summary.pending > 0
+                  ? const Color(0xFFB45309)
+                  : const Color(0xFF14B8A6),
               footer: summary.pending > 0
                   ? '${summary.overdueDays} days past due date'
                   : 'All fees settled',
@@ -120,6 +125,10 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
           onRequestWaiver: () => _openWaiverDialog(context, student),
         ),
         const SizedBox(height: 18),
+        if (paymentRequests.isNotEmpty) ...[
+          _ParentPaymentRequests(requests: paymentRequests),
+          const SizedBox(height: 18),
+        ],
 
         // Core Portal content (Split columns)
         LayoutBuilder(
@@ -127,7 +136,11 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
             final stacked = constraints.maxWidth < 920;
             final timelinePanel = SectionCard(
               title: 'Child Fee Ledger Timeline',
-              child: _FeeTimeline(demands: demands, concessions: concessions, payments: payments),
+              child: _FeeTimeline(
+                demands: demands,
+                concessions: concessions,
+                payments: payments,
+              ),
             );
             final historyPanel = SectionCard(
               title: 'Recent Payments & Receipts',
@@ -176,12 +189,13 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
                               const SizedBox(width: 12),
                               IconButton(
                                 onPressed: () async {
-                                  final bytes = await ReportService.buildReceiptPdf(
-                                    payment: payment,
-                                    student: student,
-                                    summary: summary,
-                                    school: state.school,
-                                  );
+                                  final bytes =
+                                      await ReportService.buildReceiptPdf(
+                                        payment: payment,
+                                        student: student,
+                                        summary: summary,
+                                        school: state.school,
+                                      );
                                   await Printing.sharePdf(
                                     bytes: bytes,
                                     filename:
@@ -224,7 +238,11 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
 
   // ─── Pay Dues Dialog ───────────────────────────────────────────────────────
 
-  void _openPaymentDialog(BuildContext context, Student student, double pendingAmount) {
+  void _openPaymentDialog(
+    BuildContext context,
+    Student student,
+    double pendingAmount,
+  ) {
     if (pendingAmount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No outstanding balance to pay.')),
@@ -258,13 +276,22 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFE2E8F0), width: 2),
+                      border: Border.all(
+                        color: const Color(0xFFE2E8F0),
+                        width: 2,
+                      ),
                     ),
                     child: Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.qr_code_2, size: 100, color: const Color(0xFF0F766E).withValues(alpha: 0.85)),
+                          Icon(
+                            Icons.qr_code_2,
+                            size: 100,
+                            color: const Color(
+                              0xFF0F766E,
+                            ).withValues(alpha: 0.85),
+                          ),
                           const SizedBox(height: 4),
                           const Text(
                             'VIDYALEDGER@UPI',
@@ -302,28 +329,37 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: processingPayment ? null : () => Navigator.of(context).pop(),
+              onPressed: processingPayment
+                  ? null
+                  : () => Navigator.of(context).pop(),
               child: const Text('Cancel'),
             ),
             FilledButton.icon(
               onPressed: processingPayment
                   ? null
                   : () async {
-                      final amount = double.tryParse(paymentAmountController.text) ?? 0;
+                      final amount =
+                          double.tryParse(paymentAmountController.text) ?? 0;
                       final refNo = upiRefController.text.trim();
                       if (amount <= 0 || refNo.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text('Please enter a valid amount and transaction reference.'),
+                            content: Text(
+                              'Please enter a valid amount and transaction reference.',
+                            ),
                           ),
                         );
                         return;
                       }
                       setDialogState(() => processingPayment = true);
                       try {
-                        final service = ref.read(supabaseFinanceServiceProvider);
+                        final service = ref.read(
+                          supabaseFinanceServiceProvider,
+                        );
                         if (service == null) {
-                          ref.read(appControllerProvider.notifier).recordPayment(
+                          ref
+                              .read(appControllerProvider.notifier)
+                              .recordPayment(
                                 studentId: student.id,
                                 amount: amount,
                                 mode: PaymentMode.upi,
@@ -340,13 +376,19 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
                           );
                           await refreshAppStateFromSupabase(
                             ref,
-                            currentUser: ref.read(appControllerProvider).currentUser,
+                            currentUser: ref
+                                .read(appControllerProvider)
+                                .currentUser,
                           );
                         }
                         if (!context.mounted) return;
                         Navigator.of(context).pop();
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('UPI Payment completed successfully!')),
+                          const SnackBar(
+                            content: Text(
+                              'UPI Payment completed successfully!',
+                            ),
+                          ),
                         );
                       } catch (err) {
                         if (!context.mounted) return;
@@ -361,10 +403,15 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
                   ? const SizedBox(
                       width: 16,
                       height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
                     )
                   : const Icon(Icons.check),
-              label: Text(processingPayment ? 'Confirming...' : 'Submit Payment'),
+              label: Text(
+                processingPayment ? 'Confirming...' : 'Submit Payment',
+              ),
             ),
           ],
         ),
@@ -388,12 +435,27 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
               children: [
                 DropdownButtonFormField<String>(
                   initialValue: concessionCategory,
-                  decoration: const InputDecoration(labelText: 'Exemption Category'),
-                  items: ['EWS', 'RTE', 'SC', 'ST', 'Minority', 'Girl Child', 'Sibling']
-                      .map((cat) => DropdownMenuItem(value: cat, child: Text(cat)))
-                      .toList(),
-                  onChanged: (val) =>
-                      setDialogState(() => concessionCategory = val ?? concessionCategory),
+                  decoration: const InputDecoration(
+                    labelText: 'Exemption Category',
+                  ),
+                  items:
+                      [
+                            'EWS',
+                            'RTE',
+                            'SC',
+                            'ST',
+                            'Minority',
+                            'Girl Child',
+                            'Sibling',
+                          ]
+                          .map(
+                            (cat) =>
+                                DropdownMenuItem(value: cat, child: Text(cat)),
+                          )
+                          .toList(),
+                  onChanged: (val) => setDialogState(
+                    () => concessionCategory = val ?? concessionCategory,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -410,7 +472,8 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
                   maxLines: 3,
                   decoration: const InputDecoration(
                     labelText: 'Reason & Support note',
-                    hintText: 'Describe necessity or certificate number details...',
+                    hintText:
+                        'Describe necessity or certificate number details...',
                   ),
                 ),
               ],
@@ -418,28 +481,37 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: submittingWaiver ? null : () => Navigator.of(context).pop(),
+              onPressed: submittingWaiver
+                  ? null
+                  : () => Navigator.of(context).pop(),
               child: const Text('Cancel'),
             ),
             FilledButton.icon(
               onPressed: submittingWaiver
                   ? null
                   : () async {
-                      final amount = double.tryParse(concessionAmountController.text) ?? 0;
+                      final amount =
+                          double.tryParse(concessionAmountController.text) ?? 0;
                       final reason = concessionReasonController.text.trim();
                       if (amount <= 0 || reason.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text('Please specify a valid amount and reasoning note.'),
+                            content: Text(
+                              'Please specify a valid amount and reasoning note.',
+                            ),
                           ),
                         );
                         return;
                       }
                       setDialogState(() => submittingWaiver = true);
                       try {
-                        final service = ref.read(supabaseFinanceServiceProvider);
+                        final service = ref.read(
+                          supabaseFinanceServiceProvider,
+                        );
                         if (service == null) {
-                          ref.read(appControllerProvider.notifier).submitConcession(
+                          ref
+                              .read(appControllerProvider.notifier)
+                              .submitConcession(
                                 studentId: student.id,
                                 category: concessionCategory,
                                 concessionType: '$concessionCategory support',
@@ -458,13 +530,19 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
                           );
                           await refreshAppStateFromSupabase(
                             ref,
-                            currentUser: ref.read(appControllerProvider).currentUser,
+                            currentUser: ref
+                                .read(appControllerProvider)
+                                .currentUser,
                           );
                         }
                         if (!context.mounted) return;
                         Navigator.of(context).pop();
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Waiver request submitted for approval.')),
+                          const SnackBar(
+                            content: Text(
+                              'Waiver request submitted for approval.',
+                            ),
+                          ),
                         );
                       } catch (err) {
                         if (!context.mounted) return;
@@ -479,10 +557,15 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
                   ? const SizedBox(
                       width: 16,
                       height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
                     )
                   : const Icon(Icons.send_outlined),
-              label: Text(submittingWaiver ? 'Submitting...' : 'Submit Request'),
+              label: Text(
+                submittingWaiver ? 'Submitting...' : 'Submit Request',
+              ),
             ),
           ],
         ),
@@ -527,7 +610,9 @@ class _ParentHero extends StatelessWidget {
             decoration: BoxDecoration(
               color: const Color(0xFF14B8A6).withValues(alpha: 0.12),
               shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFF14B8A6).withValues(alpha: 0.3)),
+              border: Border.all(
+                color: const Color(0xFF14B8A6).withValues(alpha: 0.3),
+              ),
             ),
             child: const Icon(
               Icons.family_restroom_outlined,
@@ -556,7 +641,10 @@ class _ParentHero extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   'Linked Ward: ${student.name} (${student.admissionNo}) | Class ${student.classLabel}',
-                  style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                  style: const TextStyle(
+                    color: Color(0xFF94A3B8),
+                    fontSize: 13,
+                  ),
                 ),
               ],
             ),
@@ -603,6 +691,91 @@ class _ParentQuickActions extends StatelessWidget {
             onTap: onRequestWaiver,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ParentPaymentRequests extends StatelessWidget {
+  const _ParentPaymentRequests({required this.requests});
+
+  final List<PaymentRequest> requests;
+
+  @override
+  Widget build(BuildContext context) {
+    return SectionCard(
+      title: 'Online Payment Requests',
+      child: Column(
+        children: requests.take(3).map((request) {
+          return Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE0F2F1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    request.provider == PaymentProvider.upiIntent
+                        ? Icons.qr_code_2
+                        : Icons.account_balance_wallet_outlined,
+                    color: const Color(0xFF0F766E),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${request.provider.label} | ${moneyFormat.format(request.amount)}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF1E293B),
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        request.requestNo,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF64748B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                StatusPill(
+                  label: request.status.label,
+                  color: statusColor(request.status.label),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: 'Copy payment link',
+                  onPressed: () async {
+                    await Clipboard.setData(
+                      ClipboardData(text: request.payableLink),
+                    );
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Payment link copied.')),
+                    );
+                  },
+                  icon: const Icon(Icons.copy),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
       ),
     );
   }
@@ -702,38 +875,45 @@ class _FeeTimeline extends StatelessWidget {
 
     // 1. Add demands
     for (final d in demands) {
-      timelineItems.add(_TimelineNode(
-        date: d.dueDate,
-        title: 'Fee Demand Generated',
-        subtitle: 'Amount due: ${moneyFormat.format(d.amount)}',
-        color: const Color(0xFF2563EB),
-        icon: Icons.receipt_outlined,
-      ));
+      timelineItems.add(
+        _TimelineNode(
+          date: d.dueDate,
+          title: 'Fee Demand Generated',
+          subtitle: 'Amount due: ${moneyFormat.format(d.amount)}',
+          color: const Color(0xFF2563EB),
+          icon: Icons.receipt_outlined,
+        ),
+      );
     }
 
     // 2. Add approved concessions
     for (final c in concessions) {
       if (c.status == ConcessionStatus.approved) {
-        timelineItems.add(_TimelineNode(
-          date: c.createdAt,
-          title: 'Concession / Support Applied',
-          subtitle: '${c.category} waiver: -${moneyFormat.format(c.amount)}',
-          color: const Color(0xFF7C3AED),
-          icon: Icons.verified_outlined,
-        ));
+        timelineItems.add(
+          _TimelineNode(
+            date: c.createdAt,
+            title: 'Concession / Support Applied',
+            subtitle: '${c.category} waiver: -${moneyFormat.format(c.amount)}',
+            color: const Color(0xFF7C3AED),
+            icon: Icons.verified_outlined,
+          ),
+        );
       }
     }
 
     // 3. Add payments
     for (final p in payments) {
       if (p.status == PaymentStatus.completed) {
-        timelineItems.add(_TimelineNode(
-          date: p.date,
-          title: 'Payment Received',
-          subtitle: 'Receipt: ${p.receiptNo} | Amount: ${moneyFormat.format(p.amount)}',
-          color: const Color(0xFF047857),
-          icon: Icons.check_circle_outline,
-        ));
+        timelineItems.add(
+          _TimelineNode(
+            date: p.date,
+            title: 'Payment Received',
+            subtitle:
+                'Receipt: ${p.receiptNo} | Amount: ${moneyFormat.format(p.amount)}',
+            color: const Color(0xFF047857),
+            icon: Icons.check_circle_outline,
+          ),
+        );
       }
     }
 
@@ -763,7 +943,9 @@ class _FeeTimeline extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: node.color.withValues(alpha: 0.12),
                     shape: BoxShape.circle,
-                    border: Border.all(color: node.color.withValues(alpha: 0.4)),
+                    border: Border.all(
+                      color: node.color.withValues(alpha: 0.4),
+                    ),
                   ),
                   child: Icon(node.icon, size: 16, color: node.color),
                 ),

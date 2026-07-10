@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:printing/printing.dart';
 
 import '../models/models.dart';
@@ -19,16 +20,24 @@ class PaymentsScreen extends ConsumerStatefulWidget {
 class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
   String? studentId;
   PaymentMode mode = PaymentMode.upi;
+  PaymentProvider requestProvider = PaymentProvider.upiIntent;
   final amountController = TextEditingController(text: '8000');
   final referenceController = TextEditingController(text: 'UPI-DEMO-001');
   final noteController = TextEditingController(text: 'Term fee payment');
+  final requestAmountController = TextEditingController(text: '8000');
+  final requestNoteController = TextEditingController(
+    text: 'Term fee payment request',
+  );
   bool recording = false;
+  bool creatingRequest = false;
 
   @override
   void dispose() {
     amountController.dispose();
     referenceController.dispose();
     noteController.dispose();
+    requestAmountController.dispose();
+    requestNoteController.dispose();
     super.dispose();
   }
 
@@ -36,7 +45,9 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
     final stats = ref.watch(dashboardStatsProvider);
-    studentId ??= state.students.first.id;
+    if (state.students.isNotEmpty && studentId == null) {
+      studentId = state.students.first.id;
+    }
     final chequeQueue = state.payments
         .where((payment) => payment.mode == PaymentMode.cheque)
         .where((payment) => payment.status == PaymentStatus.pending)
@@ -54,6 +65,20 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
           collected: stats.totalCollected,
           pending: stats.totalPending,
           chequeQueue: chequeQueue,
+        ),
+        const SizedBox(height: 18),
+        _GatewayRequestPanel(
+          students: state.students,
+          selectedStudentId: studentId,
+          provider: requestProvider,
+          amountController: requestAmountController,
+          noteController: requestNoteController,
+          paymentRequests: state.paymentRequests,
+          creating: creatingRequest,
+          onStudentChanged: (value) => setState(() => studentId = value),
+          onProviderChanged: (value) =>
+              setState(() => requestProvider = value ?? requestProvider),
+          onCreate: _createPaymentRequest,
         ),
         const SizedBox(height: 18),
         LayoutBuilder(
@@ -99,12 +124,21 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
   Future<void> _recordPayment() async {
     if (studentId == null || recording) return;
 
+    final amount = double.tryParse(amountController.text) ?? 0;
+    final referenceNo = referenceController.text.trim();
+    final note = noteController.text.trim();
+    if (amount <= 0 || referenceNo.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter an amount greater than zero and a reference.'),
+        ),
+      );
+      return;
+    }
+
     setState(() => recording = true);
     try {
       final service = ref.read(supabaseFinanceServiceProvider);
-      final amount = double.tryParse(amountController.text) ?? 0;
-      final referenceNo = referenceController.text.trim();
-      final note = noteController.text.trim();
 
       if (service == null) {
         final payment = ref
@@ -146,6 +180,303 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
     } finally {
       if (mounted) setState(() => recording = false);
     }
+  }
+
+  Future<void> _createPaymentRequest() async {
+    if (studentId == null || creatingRequest) return;
+
+    final amount = double.tryParse(requestAmountController.text) ?? 0;
+    final note = requestNoteController.text.trim();
+    if (amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter a request amount greater than zero.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() => creatingRequest = true);
+    try {
+      final service = ref.read(supabaseFinanceServiceProvider);
+      final PaymentRequest request;
+      if (service == null) {
+        request = ref
+            .read(appControllerProvider.notifier)
+            .createPaymentRequest(
+              studentId: studentId!,
+              amount: amount,
+              provider: requestProvider,
+              note: note,
+            );
+      } else {
+        request = await service.createPaymentRequest(
+          studentId: studentId!,
+          amount: amount,
+          provider: requestProvider,
+          note: note,
+        );
+        await refreshAppStateFromSupabase(
+          ref,
+          currentUser: ref.read(appControllerProvider).currentUser,
+        );
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${request.provider.label} request created.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Payment request failed: $error')));
+    } finally {
+      if (mounted) setState(() => creatingRequest = false);
+    }
+  }
+}
+
+class _GatewayRequestPanel extends StatelessWidget {
+  const _GatewayRequestPanel({
+    required this.students,
+    required this.selectedStudentId,
+    required this.provider,
+    required this.amountController,
+    required this.noteController,
+    required this.paymentRequests,
+    required this.creating,
+    required this.onStudentChanged,
+    required this.onProviderChanged,
+    required this.onCreate,
+  });
+
+  final List<Student> students;
+  final String? selectedStudentId;
+  final PaymentProvider provider;
+  final TextEditingController amountController;
+  final TextEditingController noteController;
+  final List<PaymentRequest> paymentRequests;
+  final bool creating;
+  final ValueChanged<String?> onStudentChanged;
+  final ValueChanged<PaymentProvider?> onProviderChanged;
+  final VoidCallback onCreate;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stacked = constraints.maxWidth < 980;
+        final form = SectionCard(
+          title: 'UPI & Gateway Request',
+          child: Column(
+            children: [
+              DropdownButtonFormField<String>(
+                initialValue: selectedStudentId,
+                decoration: const InputDecoration(labelText: 'Student'),
+                items: students
+                    .map(
+                      (student) => DropdownMenuItem(
+                        value: student.id,
+                        child: Text('${student.name} - ${student.classLabel}'),
+                      ),
+                    )
+                    .toList(),
+                onChanged: onStudentChanged,
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<PaymentProvider>(
+                initialValue: provider,
+                decoration: const InputDecoration(labelText: 'Provider'),
+                items: PaymentProvider.values
+                    .map(
+                      (item) => DropdownMenuItem(
+                        value: item,
+                        child: Text(item.label),
+                      ),
+                    )
+                    .toList(),
+                onChanged: onProviderChanged,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: amountController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Request amount',
+                  prefixIcon: Icon(Icons.currency_rupee),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: noteController,
+                decoration: const InputDecoration(
+                  labelText: 'Parent-facing note',
+                  prefixIcon: Icon(Icons.link),
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: creating || selectedStudentId == null
+                      ? null
+                      : onCreate,
+                  icon: creating
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.add_link),
+                  label: Text(creating ? 'Creating...' : 'Create Request'),
+                ),
+              ),
+            ],
+          ),
+        );
+        final list = SectionCard(
+          title: 'Recent Online Requests',
+          child: paymentRequests.isEmpty
+              ? const EmptyState(message: 'No payment requests created yet.')
+              : Column(
+                  children: paymentRequests.take(4).map((request) {
+                    final student = _studentFor(students, request.studentId);
+                    return _PaymentRequestRow(
+                      request: request,
+                      studentLabel: student == null
+                          ? 'Unknown student'
+                          : '${student.name} - ${student.classLabel}',
+                    );
+                  }).toList(),
+                ),
+        );
+
+        return stacked
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [form, const SizedBox(height: 18), list],
+              )
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(width: 410, child: form),
+                  const SizedBox(width: 18),
+                  Expanded(child: list),
+                ],
+              );
+      },
+    );
+  }
+
+  Student? _studentFor(List<Student> students, String studentId) {
+    for (final student in students) {
+      if (student.id == studentId) return student;
+    }
+    return null;
+  }
+}
+
+class _PaymentRequestRow extends StatelessWidget {
+  const _PaymentRequestRow({required this.request, required this.studentLabel});
+
+  final PaymentRequest request;
+  final String studentLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFAFAFA),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE0F2F1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              request.provider == PaymentProvider.upiIntent
+                  ? Icons.qr_code_2
+                  : Icons.account_balance_wallet_outlined,
+              color: const Color(0xFF0F766E),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${request.requestNo} | ${request.provider.label}',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '$studentLabel | ${moneyFormat.format(request.amount)}',
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          StatusPill(
+            label: request.status.label,
+            color: statusColor(request.status.label),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            tooltip: 'Copy reminder message',
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: _reminderMessage()));
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Payment reminder copied.')),
+              );
+            },
+            icon: const Icon(Icons.campaign_outlined),
+          ),
+          IconButton(
+            tooltip: 'Copy payment link',
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: request.payableLink));
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Payment link copied.')),
+              );
+            },
+            icon: const Icon(Icons.copy),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _reminderMessage() {
+    final buffer = StringBuffer()
+      ..writeln('VidyaLedger fee payment reminder')
+      ..writeln('Student: $studentLabel')
+      ..writeln('Amount: ${moneyFormat.format(request.amount)}')
+      ..writeln('Request: ${request.requestNo}');
+    if (request.note.trim().isNotEmpty) {
+      buffer.writeln('Note: ${request.note.trim()}');
+    }
+    buffer.writeln('Pay here: ${request.payableLink}');
+    final expiresAt = request.expiresAt;
+    if (expiresAt != null) {
+      final day = expiresAt.day.toString().padLeft(2, '0');
+      final month = expiresAt.month.toString().padLeft(2, '0');
+      buffer.writeln('Expires: $day/$month/${expiresAt.year}');
+    }
+    return buffer.toString().trim();
   }
 }
 
@@ -339,7 +670,9 @@ class _PaymentForm extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
-              onPressed: recording ? null : onRecord,
+              onPressed: recording || selectedStudentId == null
+                  ? null
+                  : onRecord,
               icon: recording
                   ? const SizedBox(
                       width: 18,

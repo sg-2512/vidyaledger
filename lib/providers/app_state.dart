@@ -19,6 +19,7 @@ class AppState {
     required this.feeDemands,
     required this.concessions,
     required this.payments,
+    required this.paymentRequests,
     required this.reconciliationItems,
     required this.auditLogs,
   });
@@ -34,6 +35,7 @@ class AppState {
   final List<FeeDemand> feeDemands;
   final List<Concession> concessions;
   final List<Payment> payments;
+  final List<PaymentRequest> paymentRequests;
   final List<ReconciliationItem> reconciliationItems;
   final List<AuditLog> auditLogs;
 
@@ -352,6 +354,23 @@ class AppState {
         ),
       ],
       payments: payments,
+      paymentRequests: [
+        PaymentRequest(
+          id: 'pr-1',
+          studentId: 's-2',
+          amount: 8000,
+          provider: PaymentProvider.upiIntent,
+          status: PaymentRequestStatus.shared,
+          requestNo: 'VPR/2026/0001',
+          checkoutUrl:
+              'upi://pay?pa=vidyaledger.demo%40upi&pn=Vidya%20Public%20School&am=8000.00&cu=INR&tn=VPR%2F2026%2F0001',
+          upiUri:
+              'upi://pay?pa=vidyaledger.demo%40upi&pn=Vidya%20Public%20School&am=8000.00&cu=INR&tn=VPR%2F2026%2F0001',
+          note: 'SC concession balance follow-up',
+          createdAt: now.subtract(const Duration(hours: 6)),
+          expiresAt: now.add(const Duration(days: 2)),
+        ),
+      ],
       reconciliationItems: [
         const ReconciliationItem(
           id: 'r-1',
@@ -400,6 +419,7 @@ class AppState {
     List<FeeDemand>? feeDemands,
     List<Concession>? concessions,
     List<Payment>? payments,
+    List<PaymentRequest>? paymentRequests,
     List<ReconciliationItem>? reconciliationItems,
     List<AuditLog>? auditLogs,
   }) {
@@ -415,6 +435,7 @@ class AppState {
       feeDemands: feeDemands ?? this.feeDemands,
       concessions: concessions ?? this.concessions,
       payments: payments ?? this.payments,
+      paymentRequests: paymentRequests ?? this.paymentRequests,
       reconciliationItems: reconciliationItems ?? this.reconciliationItems,
       auditLogs: auditLogs ?? this.auditLogs,
     );
@@ -657,6 +678,46 @@ class AppController extends Notifier<AppState> {
     return payment;
   }
 
+  PaymentRequest createPaymentRequest({
+    required String studentId,
+    required double amount,
+    required PaymentProvider provider,
+    required String note,
+  }) {
+    final yearPrefix = state.school.academicYear.length >= 4
+        ? state.school.academicYear.substring(0, 4)
+        : DateTime.now().year.toString();
+    final requestNo =
+        'VPR/$yearPrefix/${(state.paymentRequests.length + 1).toString().padLeft(4, '0')}';
+    final upiUri = provider == PaymentProvider.upiIntent
+        ? _buildUpiUri(amount: amount, note: note, requestNo: requestNo)
+        : null;
+    final checkoutUrl =
+        upiUri ??
+        'https://payments.vidyaledger.demo/${provider.name}/${requestNo.replaceAll('/', '-')}';
+    final request = PaymentRequest(
+      id: _id('pr'),
+      studentId: studentId,
+      amount: amount,
+      provider: provider,
+      status: PaymentRequestStatus.created,
+      requestNo: requestNo,
+      checkoutUrl: checkoutUrl,
+      upiUri: upiUri,
+      note: note,
+      createdAt: DateTime.now(),
+      expiresAt: DateTime.now().add(const Duration(days: 3)),
+      gatewayOrderId: provider == PaymentProvider.upiIntent
+          ? null
+          : 'demo_${provider.name}_${DateTime.now().millisecondsSinceEpoch}',
+    );
+    state = state.copyWith(
+      paymentRequests: [request, ...state.paymentRequests],
+    );
+    _audit('Created ${provider.label} request $requestNo', 'payment_request');
+    return request;
+  }
+
   void updateChequeStatus(String paymentId, ChequeStatus chequeStatus) {
     final updated = state.payments.map((payment) {
       if (payment.id != paymentId) return payment;
@@ -671,7 +732,29 @@ class AppController extends Notifier<AppState> {
         note: 'Cheque ${chequeStatus.name}',
       );
     }).toList();
-    state = state.copyWith(payments: updated);
+    final updatedReconciliation = state.reconciliationItems.map((item) {
+      if (item.paymentId != paymentId) return item;
+      if (chequeStatus == ChequeStatus.cleared) {
+        return item.copyWith(
+          status: ReconciliationStatus.matched,
+          exceptionReason: '',
+        );
+      }
+      if (chequeStatus == ChequeStatus.bounced) {
+        return item.copyWith(
+          status: ReconciliationStatus.unmatched,
+          exceptionReason: 'Cheque bounced; receivable reopened',
+        );
+      }
+      return item.copyWith(
+        status: ReconciliationStatus.unmatched,
+        exceptionReason: 'Awaiting cheque clearance',
+      );
+    }).toList();
+    state = state.copyWith(
+      payments: updated,
+      reconciliationItems: updatedReconciliation,
+    );
     _audit('Marked cheque $paymentId as ${chequeStatus.name}', 'payment');
   }
 
@@ -782,4 +865,22 @@ class AppController extends Notifier<AppState> {
 
   String _id(String prefix) =>
       '$prefix-${DateTime.now().microsecondsSinceEpoch}';
+
+  String _buildUpiUri({
+    required double amount,
+    required String note,
+    required String requestNo,
+  }) {
+    return Uri(
+      scheme: 'upi',
+      host: 'pay',
+      queryParameters: {
+        'pa': 'vidyaledger.demo@upi',
+        'pn': state.school.name,
+        'am': amount.toStringAsFixed(2),
+        'cu': 'INR',
+        'tn': note.isEmpty ? requestNo : '$requestNo $note',
+      },
+    ).toString();
+  }
 }

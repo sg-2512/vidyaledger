@@ -10,6 +10,10 @@ enum ConcessionStatus { draft, submitted, approved, rejected }
 
 enum ReconciliationStatus { unmatched, matched, duplicate, partial, overpaid }
 
+enum PaymentProvider { upiIntent, razorpay, cashfree, phonePe, payU }
+
+enum PaymentRequestStatus { created, shared, paid, expired, failed, cancelled }
+
 extension UserRoleLabel on UserRole {
   String get label => switch (this) {
     UserRole.admin => 'Admin',
@@ -54,6 +58,27 @@ extension ReconciliationStatusLabel on ReconciliationStatus {
     ReconciliationStatus.duplicate => 'Duplicate',
     ReconciliationStatus.partial => 'Partial',
     ReconciliationStatus.overpaid => 'Overpaid',
+  };
+}
+
+extension PaymentProviderLabel on PaymentProvider {
+  String get label => switch (this) {
+    PaymentProvider.upiIntent => 'UPI Intent',
+    PaymentProvider.razorpay => 'Razorpay',
+    PaymentProvider.cashfree => 'Cashfree',
+    PaymentProvider.phonePe => 'PhonePe',
+    PaymentProvider.payU => 'PayU',
+  };
+}
+
+extension PaymentRequestStatusLabel on PaymentRequestStatus {
+  String get label => switch (this) {
+    PaymentRequestStatus.created => 'Created',
+    PaymentRequestStatus.shared => 'Shared',
+    PaymentRequestStatus.paid => 'Paid',
+    PaymentRequestStatus.expired => 'Expired',
+    PaymentRequestStatus.failed => 'Failed',
+    PaymentRequestStatus.cancelled => 'Cancelled',
   };
 }
 
@@ -353,6 +378,40 @@ class Payment {
       chequeStatus: chequeStatus ?? this.chequeStatus,
     );
   }
+}
+
+class PaymentRequest {
+  const PaymentRequest({
+    required this.id,
+    required this.studentId,
+    required this.amount,
+    required this.provider,
+    required this.status,
+    required this.requestNo,
+    required this.checkoutUrl,
+    required this.note,
+    required this.createdAt,
+    this.gatewayOrderId,
+    this.gatewayPaymentId,
+    this.upiUri,
+    this.expiresAt,
+  });
+
+  final String id;
+  final String studentId;
+  final double amount;
+  final PaymentProvider provider;
+  final PaymentRequestStatus status;
+  final String requestNo;
+  final String checkoutUrl;
+  final String note;
+  final DateTime createdAt;
+  final String? gatewayOrderId;
+  final String? gatewayPaymentId;
+  final String? upiUri;
+  final DateTime? expiresAt;
+
+  String get payableLink => upiUri?.isNotEmpty == true ? upiUri! : checkoutUrl;
 }
 
 class ReconciliationItem {

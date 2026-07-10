@@ -1,6 +1,6 @@
 # VidyaLedger
 
-VidyaLedger is a Flutter Web hackathon prototype for Indian school fee and finance management. It covers dynamic fee creation, concessions for categories such as RTE/EWS/SC/ST, payment recording, cheque tracking, reconciliation, dashboards, PDF receipts, and reports.
+VidyaLedger is a Flutter Web hackathon prototype for Indian school fee and finance management. It covers dynamic fee creation, concessions for categories such as RTE/EWS/SC/ST, student CSV onboarding, payment requests, cheque tracking, settlement reconciliation, dashboards, PDF receipts, and reports.
 
 ## Tech Stack
 
@@ -19,7 +19,7 @@ This repository contains a working Flutter Web app with demo-mode fallback and S
 
 - Demo state: Riverpod `NotifierProvider` with seeded Indian-school finance data when Supabase keys are absent.
 - Computed finance state: focused Riverpod providers for dashboard stats, visible students, concessions, payment-mode totals, and student finance summaries.
-- Backend foundation: Supabase/PostgreSQL schema, seed data, Auth-backed login, backend snapshot loading, payment recording, cheque status updates, receipt rows, and audit-log inserts.
+- Backend foundation: Supabase/PostgreSQL schema, seed data, Auth-backed login, backend snapshot loading, payment recording, database-issued receipt numbers, cheque lifecycle accounting, receipt rows, ledger entries, reconciliation updates, payment request rows, and audit-log inserts.
 - Pending production work: real payment gateway callbacks, document storage for generated PDFs, SMS/WhatsApp messaging, Tally export, and stronger operational dashboards.
 
 ## Setup
@@ -79,16 +79,20 @@ supabase/upgrade_receipt_numbering.sql
 supabase/upgrade_fee_generation.sql
 supabase/upgrade_concession_workflow.sql
 supabase/upgrade_reconciliation_workflow.sql
+supabase/upgrade_cheque_lifecycle.sql
+supabase/upgrade_payment_requests.sql
 supabase/upgrade_student_register.sql
 supabase/upgrade_school_settings.sql
 ```
 
 This adds database-issued receipt numbers, payment idempotency keys, atomic
 receipt creation, persisted fee generation, concession approvals,
-reconciliation rows, ledger posting, and audit logs for new payments, fee
-demands, concessions, reconciliation decisions, and student-register additions
-recorded from the app. The school settings upgrade adds editable school
-profile fields and a class-section master for tenant setup.
+reconciliation rows, cheque clearing/bounce accounting, ledger posting, and
+audit logs for new payments, fee demands, concessions, reconciliation
+decisions, cheque lifecycle changes, UPI/gateway payment requests, and
+student-register additions recorded from the app. The school settings upgrade
+adds editable school profile fields and a class-section master for tenant
+setup.
 
 Then start with credentials:
 
@@ -115,10 +119,16 @@ Role access is enforced in the Flutter UI:
 - Parent can only view linked student fee details and receipts.
 
 The student register supports class, section, and category filters, complete
-student-detail PDF export, and staff-only student creation inside the signed-in
-school tenant. Admin and principal users can also open Settings to edit the
+student-detail PDF export, staff-only student creation, and paste-based CSV
+student import inside the signed-in school tenant. Admin and principal users can
+also open Settings to edit the
 school profile and configure class-section capacity, class teacher, room, and
 active/archive status.
+
+Payment staff can create UPI intent or hosted-checkout request links, copy the
+raw payment link, or copy a parent-ready fee reminder message. The
+Reconciliation screen can paste bank or gateway settlement CSV rows and bulk
+apply matched, partial, duplicate, and overpaid decisions.
 
 In Supabase mode, the app also loads the signed-in school's profile from the
 `schools` table and uses it in the workspace header and exported PDFs, so each
@@ -131,13 +141,16 @@ school sees its own name, board, location, and academic year.
 3. View a student finance profile.
 4. Generate a fee demand.
 5. Submit and approve a concession.
-6. Record a UPI/cash/cheque payment.
-7. Generate receipt PDF.
-8. Reconcile a payment.
-9. Download collection report.
+6. Import or add a student in the register.
+7. Create a UPI/gateway payment request and copy the reminder message.
+8. Record a UPI/cash/cheque payment.
+9. Generate receipt PDF.
+10. Import settlement CSV rows in Reconciliation.
+11. Download collection report.
 
 ## Notes
 
 - Do not use real student personal data in the hackathon demo.
 - State-specific fee laws and category rules must be verified before real deployment.
-- Real payment gateway, SMS/WhatsApp sending, and Tally integration are intentionally out of MVP scope.
+- Real provider webhooks, SMS/WhatsApp sending, and Tally integration are intentionally out of MVP scope.
+- See `docs/payment-gateway-architecture.md` for the UPI and hosted-checkout integration plan.

@@ -15,6 +15,7 @@ class FinanceSnapshot {
     required this.feeDemands,
     required this.concessions,
     required this.payments,
+    required this.paymentRequests,
     required this.reconciliationItems,
     required this.auditLogs,
   });
@@ -29,6 +30,7 @@ class FinanceSnapshot {
   final List<FeeDemand> feeDemands;
   final List<Concession> concessions;
   final List<Payment> payments;
+  final List<PaymentRequest> paymentRequests;
   final List<ReconciliationItem> reconciliationItems;
   final List<AuditLog> auditLogs;
 
@@ -45,6 +47,7 @@ class FinanceSnapshot {
       feeDemands: feeDemands,
       concessions: concessions,
       payments: payments,
+      paymentRequests: paymentRequests,
       reconciliationItems: reconciliationItems,
       auditLogs: auditLogs,
     );
@@ -89,6 +92,10 @@ class SupabaseFinanceService {
       'class_sections',
       orderBy: 'class_name',
     );
+    final paymentRequestRows = await _selectOptionalTable(
+      'payment_requests',
+      orderBy: 'created_at',
+    );
     final students = results[3].map(_studentFromRow).toList();
     final classSections =
         classSectionRows.isEmpty
@@ -109,6 +116,7 @@ class SupabaseFinanceService {
       feeDemands: results[6].map(_feeDemandFromRow).toList(),
       concessions: results[7].map(_concessionFromRow).toList(),
       payments: results[8].map(_paymentFromRow).toList(),
+      paymentRequests: paymentRequestRows.map(_paymentRequestFromRow).toList(),
       reconciliationItems: results[9].map(_reconciliationFromRow).toList(),
       auditLogs: results[10].map(_auditLogFromRow).toList(),
     );
@@ -138,6 +146,24 @@ class SupabaseFinanceService {
       },
     );
     return _paymentFromRow(_singleRowFromRpc(data));
+  }
+
+  Future<PaymentRequest> createPaymentRequest({
+    required String studentId,
+    required double amount,
+    required PaymentProvider provider,
+    required String note,
+  }) async {
+    final data = await client.rpc(
+      'create_payment_request',
+      params: {
+        'p_student_id': studentId,
+        'p_amount': amount,
+        'p_provider': _paymentProviderDb(provider),
+        'p_note': note,
+      },
+    );
+    return _paymentRequestFromRow(_singleRowFromRpc(data));
   }
 
   Future<int> generateFeeDemand({
@@ -335,30 +361,14 @@ class SupabaseFinanceService {
     String paymentId,
     ChequeStatus chequeStatus,
   ) async {
-    final userRow = await _currentUserRow();
-    final paymentStatus = chequeStatus == ChequeStatus.cleared
-        ? PaymentStatus.completed
-        : chequeStatus == ChequeStatus.bounced
-        ? PaymentStatus.bounced
-        : PaymentStatus.pending;
-    final updated = await client
-        .from('payments')
-        .update({
-          'status': _paymentStatusDb(paymentStatus),
-          'cheque_status': _chequeStatusDb(chequeStatus),
-          'note': 'Cheque ${chequeStatus.name}',
-        })
-        .eq('id', paymentId)
-        .select()
-        .single();
-    final payment = _paymentFromRow(Map<String, dynamic>.from(updated as Map));
-    await _insertAuditLog(
-      userRow: userRow,
-      action: 'Marked cheque $paymentId as ${chequeStatus.name}',
-      objectType: 'payment',
-      objectId: paymentId,
+    final data = await client.rpc(
+      'update_cheque_status_with_ledger',
+      params: {
+        'p_payment_id': paymentId,
+        'p_cheque_status': _chequeStatusDb(chequeStatus),
+      },
     );
-    return payment;
+    return _paymentFromRow(_singleRowFromRpc(data));
   }
 
   Future<List<Map<String, dynamic>>> _selectTable(
@@ -575,6 +585,24 @@ class SupabaseFinanceService {
     );
   }
 
+  PaymentRequest _paymentRequestFromRow(Map<String, dynamic> row) {
+    return PaymentRequest(
+      id: row['id'].toString(),
+      studentId: row['student_id']?.toString() ?? '',
+      amount: _toDouble(row['amount']),
+      provider: _paymentProvider(row['provider']?.toString()),
+      status: _paymentRequestStatus(row['status']?.toString()),
+      requestNo: row['request_no']?.toString() ?? '',
+      checkoutUrl: row['checkout_url']?.toString() ?? '',
+      upiUri: row['upi_uri']?.toString(),
+      gatewayOrderId: row['gateway_order_id']?.toString(),
+      gatewayPaymentId: row['gateway_payment_id']?.toString(),
+      note: row['note']?.toString() ?? '',
+      createdAt: _toDate(row['created_at']),
+      expiresAt: row['expires_at'] == null ? null : _toDate(row['expires_at']),
+    );
+  }
+
   ReconciliationItem _reconciliationFromRow(Map<String, dynamic> row) {
     return ReconciliationItem(
       id: row['id'].toString(),
@@ -623,6 +651,27 @@ class SupabaseFinanceService {
     };
   }
 
+  PaymentProvider _paymentProvider(String? value) {
+    return switch (value) {
+      'razorpay' => PaymentProvider.razorpay,
+      'cashfree' => PaymentProvider.cashfree,
+      'phonepe' => PaymentProvider.phonePe,
+      'payu' => PaymentProvider.payU,
+      _ => PaymentProvider.upiIntent,
+    };
+  }
+
+  PaymentRequestStatus _paymentRequestStatus(String? value) {
+    return switch (value) {
+      'shared' => PaymentRequestStatus.shared,
+      'paid' => PaymentRequestStatus.paid,
+      'expired' => PaymentRequestStatus.expired,
+      'failed' => PaymentRequestStatus.failed,
+      'cancelled' => PaymentRequestStatus.cancelled,
+      _ => PaymentRequestStatus.created,
+    };
+  }
+
   ChequeStatus? _nullableChequeStatus(String? value) {
     return switch (value) {
       'received' => ChequeStatus.received,
@@ -661,6 +710,16 @@ class SupabaseFinanceService {
     };
   }
 
+  String _paymentProviderDb(PaymentProvider value) {
+    return switch (value) {
+      PaymentProvider.razorpay => 'razorpay',
+      PaymentProvider.cashfree => 'cashfree',
+      PaymentProvider.phonePe => 'phonepe',
+      PaymentProvider.payU => 'payu',
+      PaymentProvider.upiIntent => 'upi_intent',
+    };
+  }
+
   String _paymentIdempotencyKey({
     required String studentId,
     required double amount,
@@ -677,15 +736,6 @@ class SupabaseFinanceService {
       amount.toStringAsFixed(2),
       normalizedReference,
     ].join(':');
-  }
-
-  String _paymentStatusDb(PaymentStatus value) {
-    return switch (value) {
-      PaymentStatus.pending => 'pending',
-      PaymentStatus.bounced => 'bounced',
-      PaymentStatus.reversed => 'reversed',
-      PaymentStatus.completed => 'completed',
-    };
   }
 
   String _chequeStatusDb(ChequeStatus value) {
