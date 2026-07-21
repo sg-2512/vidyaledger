@@ -9,6 +9,7 @@ final appControllerProvider = NotifierProvider<AppController, AppState>(
 class AppState {
   const AppState({
     required this.currentUser,
+    required this.selectedStudentId,
     required this.school,
     required this.users,
     required this.guardians,
@@ -25,6 +26,7 @@ class AppState {
   });
 
   final AppUser? currentUser;
+  final String? selectedStudentId;
   final SchoolProfile school;
   final List<AppUser> users;
   final List<Guardian> guardians;
@@ -96,6 +98,17 @@ class AppState {
         status: 'Active',
       ),
       const Student(
+        id: 's-5',
+        admissionNo: 'VL-2026-005',
+        name: 'Ira Sharma',
+        className: '4',
+        section: 'C',
+        guardianId: 'g-1',
+        category: 'General',
+        phone: '+91 98765 10001',
+        status: 'Active',
+      ),
+      const Student(
         id: 's-2',
         admissionNo: 'VL-2026-002',
         name: 'Arjun Kumar',
@@ -130,6 +143,15 @@ class AppState {
       ),
     ];
     final classSections = [
+      const ClassSection(
+        id: 'cs-4-c',
+        className: '4',
+        section: 'C',
+        classTeacher: 'Ritika Sen',
+        roomLabel: 'Room 108',
+        capacity: 38,
+        active: true,
+      ),
       const ClassSection(
         id: 'cs-6-a',
         className: '6',
@@ -223,6 +245,22 @@ class AppState {
         status: 'open',
       ),
       FeeDemand(
+        id: 'fd-6',
+        studentId: 's-5',
+        feeHeadId: 'fh-1',
+        amount: 24000,
+        dueDate: now.add(const Duration(days: 18)),
+        status: 'open',
+      ),
+      FeeDemand(
+        id: 'fd-7',
+        studentId: 's-5',
+        feeHeadId: 'fh-3',
+        amount: 4500,
+        dueDate: now.add(const Duration(days: 36)),
+        status: 'open',
+      ),
+      FeeDemand(
         id: 'fd-4',
         studentId: 's-3',
         feeHeadId: 'fh-1',
@@ -263,6 +301,17 @@ class AppState {
         note: 'Term tuition payment',
       ),
       Payment(
+        id: 'p-4',
+        studentId: 's-5',
+        amount: 9000,
+        mode: PaymentMode.upi,
+        status: PaymentStatus.completed,
+        date: now.subtract(const Duration(days: 6)),
+        referenceNo: 'UPI558241',
+        receiptNo: 'VL/2026/0004',
+        note: 'Initial tuition payment',
+      ),
+      Payment(
         id: 'p-3',
         studentId: 's-4',
         amount: 12000,
@@ -277,6 +326,7 @@ class AppState {
     ];
     return AppState(
       currentUser: null,
+      selectedStudentId: null,
       school: school,
       users: const [
         AppUser(
@@ -286,28 +336,17 @@ class AppState {
           role: UserRole.admin,
         ),
         AppUser(
-          id: 'u-principal',
-          name: 'Principal Rao',
-          email: 'principal@vidyaledger.demo',
-          role: UserRole.principal,
-        ),
-        AppUser(
-          id: 'u-accountant',
-          name: 'Neha Accountant',
-          email: 'accounts@vidyaledger.demo',
-          role: UserRole.accountant,
-        ),
-        AppUser(
-          id: 'u-clerk',
-          name: 'Fee Clerk',
-          email: 'clerk@vidyaledger.demo',
-          role: UserRole.clerk,
-        ),
-        AppUser(
           id: 'u-parent',
           name: 'Meera Sharma',
           email: 'parent@vidyaledger.demo',
           role: UserRole.parent,
+          guardianId: 'g-1',
+        ),
+        AppUser(
+          id: 'u-student',
+          name: 'Asha Sharma',
+          email: 'student@vidyaledger.demo',
+          role: UserRole.student,
           guardianId: 'g-1',
         ),
       ],
@@ -387,6 +426,13 @@ class AppState {
           exceptionReason: '',
         ),
         const ReconciliationItem(
+          id: 'r-4',
+          paymentId: 'p-4',
+          channelRef: 'UPI settlement batch 03',
+          status: ReconciliationStatus.matched,
+          exceptionReason: '',
+        ),
+        const ReconciliationItem(
           id: 'r-3',
           paymentId: 'p-3',
           channelRef: 'Cheque clearing queue',
@@ -408,8 +454,10 @@ class AppState {
 
   AppState copyWith({
     AppUser? currentUser,
+    String? selectedStudentId,
     SchoolProfile? school,
     bool clearCurrentUser = false,
+    bool clearSelectedStudent = false,
     List<AppUser>? users,
     List<Guardian>? guardians,
     List<Student>? students,
@@ -425,6 +473,9 @@ class AppState {
   }) {
     return AppState(
       currentUser: clearCurrentUser ? null : currentUser ?? this.currentUser,
+      selectedStudentId: clearSelectedStudent
+          ? null
+          : selectedStudentId ?? this.selectedStudentId,
       school: school ?? this.school,
       users: users ?? this.users,
       guardians: guardians ?? this.guardians,
@@ -447,17 +498,41 @@ class AppController extends Notifier<AppState> {
   AppState build() => AppState.seeded();
 
   void replaceState(AppState nextState) {
-    state = nextState;
+    final selectedStudentId =
+        _canUseSelectedStudentId(
+          nextState.currentUser,
+          nextState.students,
+          nextState.selectedStudentId,
+        )
+        ? nextState.selectedStudentId
+        : _defaultStudentIdForUser(nextState.currentUser, nextState.students);
+    state = nextState.copyWith(
+      selectedStudentId: selectedStudentId,
+      clearSelectedStudent: selectedStudentId == null,
+    );
   }
 
   void loginAs(UserRole role) {
     final user = state.users.firstWhere((candidate) => candidate.role == role);
-    state = state.copyWith(currentUser: user);
+    final selectedStudentId = _defaultStudentIdFor(user);
+    state = state.copyWith(
+      currentUser: user,
+      selectedStudentId: selectedStudentId,
+      clearSelectedStudent: selectedStudentId == null,
+    );
     _audit('${user.name} logged in as ${role.label}', 'auth');
   }
 
   void logout() {
-    state = state.copyWith(clearCurrentUser: true);
+    state = state.copyWith(clearCurrentUser: true, clearSelectedStudent: true);
+  }
+
+  void selectStudent(String studentId) {
+    final canSeeStudent = visibleStudents().any(
+      (student) => student.id == studentId,
+    );
+    if (!canSeeStudent) return;
+    state = state.copyWith(selectedStudentId: studentId);
   }
 
   void addFeeHead(String name, String ledger, bool refundable) {
@@ -848,7 +923,53 @@ class AppController extends Notifier<AppState> {
           .where((student) => student.guardianId == user?.guardianId)
           .toList();
     }
+    if (user?.role == UserRole.student) {
+      // Students can only see themselves
+      try {
+        final student = state.students.firstWhere((s) {
+          final ug = user?.guardianId;
+          if (ug == null) return false;
+          return ug == s.guardianId;
+        });
+        return [student];
+      } catch (e) {
+        return [];
+      }
+    }
     return state.students;
+  }
+
+  String? _defaultStudentIdFor(AppUser user) {
+    return _defaultStudentIdForUser(user, state.students);
+  }
+
+  String? _defaultStudentIdForUser(AppUser? user, List<Student> students) {
+    if (user == null ||
+        (user.role != UserRole.parent && user.role != UserRole.student)) {
+      return null;
+    }
+    for (final student in students) {
+      if (student.guardianId == user.guardianId) {
+        return student.id;
+      }
+    }
+    return null;
+  }
+
+  bool _canUseSelectedStudentId(
+    AppUser? user,
+    List<Student> students,
+    String? studentId,
+  ) {
+    if (studentId == null ||
+        user == null ||
+        (user.role != UserRole.parent && user.role != UserRole.student)) {
+      return false;
+    }
+    return students.any(
+      (student) =>
+          student.id == studentId && student.guardianId == user.guardianId,
+    );
   }
 
   void _audit(String action, String objectType) {

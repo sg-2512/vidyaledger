@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart' show GoRouterHelper;
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 
@@ -19,6 +19,92 @@ class ParentDashboardScreen extends ConsumerStatefulWidget {
       _ParentDashboardScreenState();
 }
 
+class _StudentInfoHeader extends StatelessWidget {
+  const _StudentInfoHeader({
+    required this.student,
+    required this.school,
+  });
+
+  final Student student;
+  final SchoolProfile school;
+
+  @override
+  Widget build(BuildContext context) {
+    final String initials = _getInitials(student.name);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: const Color(0xFF0F766E),
+                  child: Text(
+                    initials,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        student.name,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Admission No: ${student.admissionNo}',
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Class: ${student.classLabel}',
+                        style: const TextStyle(
+                          color: Color(0xFF64748B),
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Academic Session: ${school.academicYear}',
+                        style: const TextStyle(
+                          color: Color(0xFF64748B),
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getInitials(String name) {
+    if (name.isEmpty) return '';
+    final List<String> parts = name.trim().split(' ');
+    if (parts.length >= 2) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    } else if (parts[0].length >= 2) {
+      return '${parts[0][0]}${parts[0][1]}'.toUpperCase();
+    } else {
+      return parts[0][0].toUpperCase();
+    }
+  }
+}
 class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
   final concessionAmountController = TextEditingController(text: '3000');
   final concessionReasonController = TextEditingController();
@@ -41,202 +127,131 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
-    final user = state.currentUser;
-    final parentGuardianId = user?.guardianId;
+    final linkedStudents = _linkedStudentsForParent(state);
+    final student = _selectedStudent(state, linkedStudents);
 
-    // Find the linked child
-    final student = state.students.firstWhere(
-      (s) => s.guardianId == parentGuardianId,
-      orElse: () => state.students.first,
-    );
+    if (student == null) {
+      return const EmptyState(
+        message: 'No linked student profile is available for this parent.',
+      );
+    }
 
     final summary = ref.watch(financeSummaryProvider(student.id));
-    final demands = state.feeDemands
-        .where((d) => d.studentId == student.id)
-        .toList();
-    final concessions = state.concessions
-        .where((c) => c.studentId == student.id)
-        .toList();
-    final payments = state.payments
-        .where((p) => p.studentId == student.id)
-        .toList();
-    final paymentRequests = state.paymentRequests
-        .where((request) => request.studentId == student.id)
-        .toList();
+    final demands =
+        state.feeDemands
+            .where((demand) => demand.studentId == student.id)
+            .toList()
+          ..sort((a, b) => a.dueDate.compareTo(b.dueDate));
+    final concessions =
+        state.concessions
+            .where((concession) => concession.studentId == student.id)
+            .toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final payments =
+        state.payments
+            .where((payment) => payment.studentId == student.id)
+            .toList()
+          ..sort((a, b) => b.date.compareTo(a.date));
 
-    final width = MediaQuery.of(context).size.width;
-    final statColumns = width > 1100
-        ? 3
-        : width > 720
-        ? 2
-        : 1;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 1080;
+        final topPanels = [
+          _QuickLinksPanel(
+            onStudentProfile: () => context.go('/students/${student.id}'),
+            onPayFees: () =>
+                _openPaymentDialog(context, student, summary.pending),
+            onRequestWaiver: () => _openWaiverDialog(context, student),
+            onLatestReceipt: () => _shareLatestReceipt(
+              context: context,
+              student: student,
+              summary: summary,
+              payments: payments,
+              school: state.school,
+            ),
+          ),
+          _FinanceOverviewPanel(summary: summary),
+          _DueDatesPanel(demands: demands),
+        ];
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Parent Welcome Hero Card
-        _ParentHero(student: student, guardianName: user?.name ?? 'Parent'),
-        const SizedBox(height: 18),
+        final middlePanels = [
+          _FeeDuesPanel(summary: summary),
+          _StudentActivityPanel(
+            demands: demands,
+            concessions: concessions,
+            payments: payments,
+            summary: summary,
+          ),
+        ];
 
-        // Metrics Grid
-        GridView.count(
-          crossAxisCount: statColumns,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisSpacing: 14,
-          mainAxisSpacing: 14,
-          childAspectRatio: 1.6,
+        final lowerPanels = [
+          _ConcessionStatusPanel(concessions: concessions),
+          _ReceiptPanel(
+            payments: payments,
+            student: student,
+            summary: summary,
+            school: state.school,
+          ),
+        ];
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            StatCard(
-              title: 'Total Fees Demand',
-              value: moneyFormat.format(summary.totalDemand),
-              icon: Icons.request_quote_outlined,
-              accent: const Color(0xFF2563EB),
-              footer: 'Academic year 2026-27 structure',
-            ),
-            StatCard(
-              title: 'Total Paid to Date',
-              value: moneyFormat.format(summary.paid),
-              icon: Icons.check_circle_outline,
-              accent: const Color(0xFF047857),
-              footer: '${payments.length} successful transactions',
-            ),
-            StatCard(
-              title: 'Outstanding Balance',
-              value: moneyFormat.format(summary.pending),
-              icon: summary.pending > 0
-                  ? Icons.warning_amber_rounded
-                  : Icons.verified_user_rounded,
-              accent: summary.pending > 0
-                  ? const Color(0xFFB45309)
-                  : const Color(0xFF14B8A6),
-              footer: summary.pending > 0
-                  ? '${summary.overdueDays} days past due date'
-                  : 'All fees settled',
-            ),
-          ],
-        ),
-        const SizedBox(height: 18),
-
-        // Quick Actions Row
-        _ParentQuickActions(
-          pendingAmount: summary.pending,
-          onPayNow: () => _openPaymentDialog(context, student, summary.pending),
-          onRequestWaiver: () => _openWaiverDialog(context, student),
-        ),
-        const SizedBox(height: 18),
-        if (paymentRequests.isNotEmpty) ...[
-          _ParentPaymentRequests(requests: paymentRequests),
-          const SizedBox(height: 18),
-        ],
-
-        // Core Portal content (Split columns)
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final stacked = constraints.maxWidth < 920;
-            final timelinePanel = SectionCard(
-              title: 'Child Fee Ledger Timeline',
+            _StudentInfoHeader(student: student, school: state.school),
+            const SizedBox(height: 16),
+            _PanelRow(wide: wide, children: topPanels),
+            const SizedBox(height: 14),
+            _PanelRow(wide: wide, flexes: const [3, 5], children: middlePanels),
+            const SizedBox(height: 14),
+            _PanelRow(wide: wide, flexes: const [3, 5], children: lowerPanels),
+            const SizedBox(height: 14),
+            _DashboardPanel(
+              title: 'Fee Ledger Timeline',
+              trailing: _PanelBadge(label: '${payments.length} payments'),
               child: _FeeTimeline(
                 demands: demands,
                 concessions: concessions,
                 payments: payments,
               ),
-            );
-            final historyPanel = SectionCard(
-              title: 'Recent Payments & Receipts',
-              child: payments.isEmpty
-                  ? const EmptyState(message: 'No payments recorded yet.')
-                  : Column(
-                      children: payments.map((payment) {
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF8FAFC),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: const Color(0xFFE2E8F0)),
-                          ),
-                          child: Row(
-                            children: [
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    payment.receiptNo,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      color: Color(0xFF1E293B),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    '${DateFormat.yMMMd().format(payment.date)} | ${payment.mode.label}',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: Color(0xFF64748B),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const Spacer(),
-                              Text(
-                                moneyFormat.format(payment.amount),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w900,
-                                  color: Color(0xFF0F766E),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              IconButton(
-                                onPressed: () async {
-                                  final bytes =
-                                      await ReportService.buildReceiptPdf(
-                                        payment: payment,
-                                        student: student,
-                                        summary: summary,
-                                        school: state.school,
-                                      );
-                                  await Printing.sharePdf(
-                                    bytes: bytes,
-                                    filename:
-                                        '${payment.receiptNo.replaceAll('/', '-')}.pdf',
-                                  );
-                                },
-                                icon: const Icon(Icons.picture_as_pdf),
-                                color: const Color(0xFF0F766E),
-                                tooltip: 'Download Receipt PDF',
-                              ),
-                            ],
-                          ),
-                        );
-                      }).toList(),
-                    ),
-            );
-
-            return stacked
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      timelinePanel,
-                      const SizedBox(height: 18),
-                      historyPanel,
-                    ],
-                  )
-                : Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(flex: 3, child: timelinePanel),
-                      const SizedBox(width: 18),
-                      Expanded(flex: 2, child: historyPanel),
-                    ],
-                  );
-          },
-        ),
-      ],
+            ),
+          ],
+        );
+      },
     );
   }
 
-  // ─── Pay Dues Dialog ───────────────────────────────────────────────────────
+  Future<void> _shareLatestReceipt({
+    required BuildContext context,
+    required Student student,
+    required StudentFinanceSummary summary,
+    required List<Payment> payments,
+    required SchoolProfile school,
+  }) async {
+    final completedPayments =
+        payments
+            .where((payment) => payment.status == PaymentStatus.completed)
+            .toList()
+          ..sort((a, b) => b.date.compareTo(a.date));
+
+    if (completedPayments.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No completed receipt is available yet.')),
+      );
+      return;
+    }
+
+    final payment = completedPayments.first;
+    final bytes = await ReportService.buildReceiptPdf(
+      payment: payment,
+      student: student,
+      summary: summary,
+      school: school,
+    );
+    await Printing.sharePdf(
+      bytes: bytes,
+      filename: '${payment.receiptNo.replaceAll('/', '-')}.pdf',
+    );
+  }
 
   void _openPaymentDialog(
     BuildContext context,
@@ -265,11 +280,10 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   const Text(
-                    'Scan the UPI QR Code to simulate transaction',
+                    'Scan the UPI QR code to simulate the transaction',
                     style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
                   ),
                   const SizedBox(height: 14),
-                  // Mock QR code frame
                   Container(
                     width: 180,
                     height: 180,
@@ -386,7 +400,7 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text(
-                              'UPI Payment completed successfully!',
+                              'UPI payment completed successfully.',
                             ),
                           ),
                         );
@@ -419,8 +433,6 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
     );
   }
 
-  // ─── Concession request popup ──────────────────────────────────────────────
-
   void _openWaiverDialog(BuildContext context, Student student) {
     concessionReasonController.clear();
     showDialog(
@@ -440,19 +452,16 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
                   ),
                   items:
                       [
-                            'EWS',
-                            'RTE',
-                            'SC',
-                            'ST',
-                            'Minority',
-                            'Girl Child',
-                            'Sibling',
-                          ]
-                          .map(
-                            (cat) =>
-                                DropdownMenuItem(value: cat, child: Text(cat)),
-                          )
-                          .toList(),
+                        'EWS',
+                        'RTE',
+                        'SC',
+                        'ST',
+                        'Minority',
+                        'Girl Child',
+                        'Sibling',
+                      ].map((cat) {
+                        return DropdownMenuItem(value: cat, child: Text(cat));
+                      }).toList(),
                   onChanged: (val) => setDialogState(
                     () => concessionCategory = val ?? concessionCategory,
                   ),
@@ -574,289 +583,620 @@ class _ParentDashboardScreenState extends ConsumerState<ParentDashboardScreen> {
   }
 }
 
-// ─── Welcome Header ──────────────────────────────────────────────────────────
+class _PanelRow extends StatelessWidget {
+  const _PanelRow({required this.children, required this.wide, this.flexes});
 
-class _ParentHero extends StatelessWidget {
-  const _ParentHero({required this.student, required this.guardianName});
-
-  final Student student;
-  final String guardianName;
+  final List<Widget> children;
+  final bool wide;
+  final List<int>? flexes;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(26),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF334155)),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF0F172A).withValues(alpha: 0.3),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
+    if (!wide) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFF14B8A6).withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: const Color(0xFF14B8A6).withValues(alpha: 0.3),
-              ),
-            ),
-            child: const Icon(
-              Icons.family_restroom_outlined,
-              size: 32,
-              color: Color(0xFF14B8A6),
-            ),
-          ),
-          const SizedBox(width: 18),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const StatusPill(
-                  label: 'Parent Portal Active',
-                  color: Color(0xFF14B8A6),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Welcome, $guardianName',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Linked Ward: ${student.name} (${student.admissionNo}) | Class ${student.classLabel}',
-                  style: const TextStyle(
-                    color: Color(0xFF94A3B8),
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          for (var i = 0; i < children.length; i++) ...[
+            if (i > 0) const SizedBox(height: 14),
+            children[i],
+          ],
         ],
-      ),
+      );
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < children.length; i++) ...[
+          if (i > 0) const SizedBox(width: 14),
+          Expanded(flex: flexes?[i] ?? 1, child: children[i]),
+        ],
+      ],
     );
   }
 }
 
-// ─── Quick Action Stepper ───────────────────────────────────────────────────
-
-class _ParentQuickActions extends StatelessWidget {
-  const _ParentQuickActions({
-    required this.pendingAmount,
-    required this.onPayNow,
-    required this.onRequestWaiver,
+class _DashboardPanel extends StatelessWidget {
+  const _DashboardPanel({
+    required this.title,
+    required this.child,
+    this.trailing,
   });
 
-  final double pendingAmount;
-  final VoidCallback onPayNow;
-  final VoidCallback onRequestWaiver;
+  final String title;
+  final Widget child;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
-    return SectionCard(
-      title: 'Portal Quick Actions',
-      child: Wrap(
-        spacing: 14,
-        runSpacing: 14,
-        children: [
-          _ActionButton(
-            icon: Icons.payment,
-            title: 'Pay Outstanding Fees',
-            subtitle: 'Outstanding: ${moneyFormat.format(pendingAmount)}',
-            color: const Color(0xFF0F766E),
-            onTap: onPayNow,
-          ),
-          _ActionButton(
-            icon: Icons.verified_user_outlined,
-            title: 'Submit Concession Request',
-            subtitle: 'Apply for school EWS/SC/ST support',
-            color: const Color(0xFF7C3AED),
-            onTap: onRequestWaiver,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ParentPaymentRequests extends StatelessWidget {
-  const _ParentPaymentRequests({required this.requests});
-
-  final List<PaymentRequest> requests;
-
-  @override
-  Widget build(BuildContext context) {
-    return SectionCard(
-      title: 'Online Payment Requests',
+    return Card(
       child: Column(
-        children: requests.take(3).map((request) {
-          return Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            constraints: const BoxConstraints(minHeight: 46),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: Color(0xFFE5E7EB))),
             ),
             child: Row(
               children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE0F2F1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    request.provider == PaymentProvider.upiIntent
-                        ? Icons.qr_code_2
-                        : Icons.account_balance_wallet_outlined,
-                    color: const Color(0xFF0F766E),
-                  ),
-                ),
-                const SizedBox(width: 12),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${request.provider.label} | ${moneyFormat.format(request.amount)}',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF1E293B),
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        request.requestNo,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Color(0xFF64748B),
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF111827),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
-                StatusPill(
-                  label: request.status.label,
-                  color: statusColor(request.status.label),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  tooltip: 'Copy payment link',
-                  onPressed: () async {
-                    await Clipboard.setData(
-                      ClipboardData(text: request.payableLink),
-                    );
-                    if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Payment link copied.')),
-                    );
-                  },
-                  icon: const Icon(Icons.copy),
-                ),
+                ?trailing,
               ],
             ),
-          );
-        }).toList(),
+          ),
+          Padding(padding: const EdgeInsets.all(16), child: child),
+        ],
       ),
     );
   }
 }
 
-class _ActionButton extends StatelessWidget {
-  const _ActionButton({
+class _QuickLinksPanel extends StatelessWidget {
+  const _QuickLinksPanel({
+    required this.onStudentProfile,
+    required this.onPayFees,
+    required this.onRequestWaiver,
+    required this.onLatestReceipt,
+  });
+
+  final VoidCallback onStudentProfile;
+  final VoidCallback onPayFees;
+  final VoidCallback onRequestWaiver;
+  final VoidCallback onLatestReceipt;
+
+  @override
+  Widget build(BuildContext context) {
+    final links = [
+      _QuickLinkItem(
+        icon: Icons.badge_outlined,
+        label: 'Student Profile',
+        onTap: onStudentProfile,
+      ),
+      _QuickLinkItem(
+        icon: Icons.payment,
+        label: 'Fee Payment',
+        onTap: onPayFees,
+      ),
+      _QuickLinkItem(
+        icon: Icons.verified_user_outlined,
+        label: 'Request Waiver',
+        onTap: onRequestWaiver,
+      ),
+      _QuickLinkItem(
+        icon: Icons.receipt_long_outlined,
+        label: 'Latest Receipt',
+        onTap: onLatestReceipt,
+      ),
+    ];
+
+    return _DashboardPanel(
+      title: 'Quick Links',
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final columns = constraints.maxWidth > 360 ? 2 : 1;
+          return GridView.count(
+            crossAxisCount: columns,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: columns == 1 ? 4.6 : 3.1,
+            children: links
+                .map((item) => _QuickLinkButton(item: item))
+                .toList(),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _QuickLinkButton extends StatelessWidget {
+  const _QuickLinkButton({required this.item});
+
+  final _QuickLinkItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFFF0F2F7),
+      borderRadius: BorderRadius.circular(6),
+      child: InkWell(
+        onTap: item.onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              Icon(item.icon, color: const Color(0xFF304866), size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  item.label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF304866),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickLinkItem {
+  const _QuickLinkItem({
     required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.color,
+    required this.label,
     required this.onTap,
   });
 
   final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color color;
+  final String label;
   final VoidCallback onTap;
+}
+
+class _FinanceOverviewPanel extends StatelessWidget {
+  const _FinanceOverviewPanel({required this.summary});
+
+  final StudentFinanceSummary summary;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 320,
-      child: Card(
-        color: const Color(0xFFF8FAFC),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-          side: const BorderSide(color: Color(0xFFE2E8F0)),
-        ),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(
+    final settled = summary.paid + summary.approvedConcessions;
+    final progress = summary.totalDemand == 0
+        ? 0.0
+        : (settled / summary.totalDemand).clamp(0.0, 1.0);
+
+    return _DashboardPanel(
+      title: 'Finance Status',
+      trailing: const _PanelBadge(label: '2026-27'),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 114,
+            height: 114,
+            child: Stack(
+              fit: StackFit.expand,
               children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(icon, color: color, size: 20),
+                CircularProgressIndicator(
+                  value: progress,
+                  strokeWidth: 7,
+                  backgroundColor: const Color(0xFFE8EDF2),
+                  color: const Color(0xFF16ADC2),
+                  strokeCap: StrokeCap.round,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
+                Center(
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        title,
+                        '${(progress * 100).toStringAsFixed(0)}%',
                         style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 13,
-                          color: Color(0xFF1E293B),
+                          color: Color(0xFF111827),
+                          fontSize: 19,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
-                      const SizedBox(height: 3),
-                      Text(
-                        subtitle,
-                        style: const TextStyle(
-                          fontSize: 11,
+                      const Text(
+                        'Settled',
+                        style: TextStyle(
                           color: Color(0xFF64748B),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ],
                   ),
                 ),
-                Icon(Icons.arrow_forward_ios, size: 12, color: color),
               ],
             ),
           ),
-        ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Wrap(
+              spacing: 24,
+              runSpacing: 18,
+              children: [
+                _MiniMetric(
+                  value: moneyFormat.format(summary.totalDemand),
+                  label: 'Demand',
+                ),
+                _MiniMetric(
+                  value: moneyFormat.format(summary.paid),
+                  label: 'Paid',
+                ),
+                _MiniMetric(
+                  value: moneyFormat.format(summary.approvedConcessions),
+                  label: 'Concession',
+                ),
+                _MiniMetric(
+                  value: moneyFormat.format(summary.pending),
+                  label: 'Balance',
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-// ─── Vertical Timeline Stepper ──────────────────────────────────────────────
+class _DueDatesPanel extends StatelessWidget {
+  const _DueDatesPanel({required this.demands});
+
+  final List<FeeDemand> demands;
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final visibleDemands = demands.take(3).toList();
+
+    return _DashboardPanel(
+      title: 'Due Dates',
+      trailing: const _PanelBadge(label: 'Fees'),
+      child: visibleDemands.isEmpty
+          ? const EmptyState(message: 'No due dates found.')
+          : Column(
+              children: visibleDemands.map((demand) {
+                final days = demand.dueDate.difference(now).inDays;
+                final overdue = days < 0;
+                final label = overdue
+                    ? '${days.abs()} days overdue'
+                    : days == 0
+                    ? 'Due today'
+                    : 'Due in $days days';
+                final color = overdue
+                    ? const Color(0xFFB45309)
+                    : const Color(0xFF0F766E);
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.calendar_month_outlined,
+                          color: color,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              moneyFormat.format(demand.amount),
+                              style: const TextStyle(
+                                color: Color(0xFF111827),
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              DateFormat('MMM d, yyyy').format(demand.dueDate),
+                              style: const TextStyle(
+                                color: Color(0xFF64748B),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          color: color,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+    );
+  }
+}
+
+class _FeeDuesPanel extends StatelessWidget {
+  const _FeeDuesPanel({required this.summary});
+
+  final StudentFinanceSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final paidProgress = summary.totalDemand == 0
+        ? 0.0
+        : (summary.paid / summary.totalDemand).clamp(0.0, 1.0);
+
+    return _DashboardPanel(
+      title: 'Fee Dues',
+      trailing: const _PanelBadge(label: '2026-2027'),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _MoneyLegend(
+                  color: const Color(0xFFF2C027),
+                  value: moneyFormat.format(summary.totalDemand),
+                  label: 'Annual Due',
+                ),
+                const SizedBox(height: 14),
+                _MoneyLegend(
+                  color: const Color(0xFF2BB99A),
+                  value: moneyFormat.format(summary.paid),
+                  label: 'Fees Paid',
+                ),
+                const SizedBox(height: 26),
+                Text(
+                  'Due as on date ${moneyFormat.format(summary.pending)}',
+                  style: const TextStyle(
+                    color: Color(0xFF111827),
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          SizedBox(
+            width: 112,
+            height: 112,
+            child: CircularProgressIndicator(
+              value: paidProgress,
+              strokeWidth: 7,
+              backgroundColor: const Color(0xFFF2C027),
+              color: const Color(0xFF2BB99A),
+              strokeCap: StrokeCap.round,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StudentActivityPanel extends StatelessWidget {
+  const _StudentActivityPanel({
+    required this.demands,
+    required this.concessions,
+    required this.payments,
+    required this.summary,
+  });
+
+  final List<FeeDemand> demands;
+  final List<Concession> concessions;
+  final List<Payment> payments;
+  final StudentFinanceSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final completedPayments = payments
+        .where((payment) => payment.status == PaymentStatus.completed)
+        .toList();
+    final approvedConcessions = concessions
+        .where((concession) => concession.status == ConcessionStatus.approved)
+        .toList();
+
+    final rows = [
+      _ActivityMetric(
+        label: 'Fee demands',
+        count: '${demands.length}',
+        amount: summary.totalDemand,
+        status: demands.isEmpty ? 'No demand' : 'Open',
+      ),
+      _ActivityMetric(
+        label: 'Payments completed',
+        count: '${completedPayments.length}',
+        amount: summary.paid,
+        status: completedPayments.isEmpty ? 'Pending' : 'Completed',
+      ),
+      _ActivityMetric(
+        label: 'Concessions approved',
+        count: '${approvedConcessions.length}',
+        amount: summary.approvedConcessions,
+        status: approvedConcessions.isEmpty ? 'None' : 'Approved',
+      ),
+      _ActivityMetric(
+        label: 'Outstanding balance',
+        count: summary.overdueDays > 0 ? '${summary.overdueDays}d' : '-',
+        amount: summary.pending,
+        status: summary.pending > 0 ? 'Pending' : 'Settled',
+      ),
+    ];
+
+    return _DashboardPanel(
+      title: 'Student Activity',
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: constraints.maxWidth),
+              child: DataTable(
+                headingRowColor: WidgetStateProperty.all(
+                  const Color(0xFFF1F5F9),
+                ),
+                border: TableBorder.all(
+                  color: const Color(0xFFE2E8F0),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                columns: const [
+                  DataColumn(label: Text('Activity')),
+                  DataColumn(label: Text('Count')),
+                  DataColumn(label: Text('Amount')),
+                  DataColumn(label: Text('Status')),
+                ],
+                rows: rows.map((row) {
+                  return DataRow(
+                    cells: [
+                      DataCell(Text(row.label)),
+                      DataCell(Text(row.count)),
+                      DataCell(Text(moneyFormat.format(row.amount))),
+                      DataCell(
+                        StatusPill(
+                          label: row.status,
+                          color: statusColor(row.status),
+                        ),
+                      ),
+                    ],
+                  );
+                }).toList(),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ConcessionStatusPanel extends StatelessWidget {
+  const _ConcessionStatusPanel({required this.concessions});
+
+  final List<Concession> concessions;
+
+  @override
+  Widget build(BuildContext context) {
+    return _DashboardPanel(
+      title: 'Concession Requests',
+      child: concessions.isEmpty
+          ? const EmptyState(message: 'No concession requests submitted yet.')
+          : Column(
+              children: concessions.map((concession) {
+                return _CompactListRow(
+                  icon: Icons.verified_user_outlined,
+                  title: concession.concessionType,
+                  subtitle:
+                      '${moneyFormat.format(concession.amount)} | ${DateFormat.yMMMd().format(concession.createdAt)}',
+                  trailing: StatusPill(
+                    label: concession.status.label,
+                    color: statusColor(concession.status.label),
+                  ),
+                );
+              }).toList(),
+            ),
+    );
+  }
+}
+
+class _ReceiptPanel extends StatelessWidget {
+  const _ReceiptPanel({
+    required this.payments,
+    required this.student,
+    required this.summary,
+    required this.school,
+  });
+
+  final List<Payment> payments;
+  final Student student;
+  final StudentFinanceSummary summary;
+  final SchoolProfile school;
+
+  @override
+  Widget build(BuildContext context) {
+    return _DashboardPanel(
+      title: 'Recent Payments and Receipts',
+      child: payments.isEmpty
+          ? const EmptyState(message: 'No payments recorded yet.')
+          : Column(
+              children: payments.map((payment) {
+                return _CompactListRow(
+                  icon: Icons.receipt_long_outlined,
+                  title: payment.receiptNo,
+                  subtitle:
+                      '${DateFormat.yMMMd().format(payment.date)} | ${payment.mode.label}',
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        moneyFormat.format(payment.amount),
+                        style: const TextStyle(
+                          color: Color(0xFF0F766E),
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        tooltip: 'Download Receipt PDF',
+                        onPressed: payment.status == PaymentStatus.completed
+                            ? () async {
+                                final bytes =
+                                    await ReportService.buildReceiptPdf(
+                                      payment: payment,
+                                      student: student,
+                                      summary: summary,
+                                      school: school,
+                                    );
+                                await Printing.sharePdf(
+                                  bytes: bytes,
+                                  filename:
+                                      '${payment.receiptNo.replaceAll('/', '-')}.pdf',
+                                );
+                              }
+                            : null,
+                        icon: const Icon(Icons.picture_as_pdf_outlined),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+    );
+  }
+}
 
 class _FeeTimeline extends StatelessWidget {
   const _FeeTimeline({
@@ -873,65 +1213,53 @@ class _FeeTimeline extends StatelessWidget {
   Widget build(BuildContext context) {
     final timelineItems = <_TimelineNode>[];
 
-    // 1. Add demands
-    for (final d in demands) {
+    for (final demand in demands) {
       timelineItems.add(
         _TimelineNode(
-          date: d.dueDate,
+          date: demand.dueDate,
           title: 'Fee Demand Generated',
-          subtitle: 'Amount due: ${moneyFormat.format(d.amount)}',
+          subtitle: 'Amount due: ${moneyFormat.format(demand.amount)}',
           color: const Color(0xFF2563EB),
           icon: Icons.receipt_outlined,
         ),
       );
     }
 
-    // 2. Add approved concessions
-    for (final c in concessions) {
-      if (c.status == ConcessionStatus.approved) {
-        timelineItems.add(
-          _TimelineNode(
-            date: c.createdAt,
-            title: 'Concession / Support Applied',
-            subtitle: '${c.category} waiver: -${moneyFormat.format(c.amount)}',
-            color: const Color(0xFF7C3AED),
-            icon: Icons.verified_outlined,
-          ),
-        );
-      }
+    for (final concession in concessions) {
+      timelineItems.add(
+        _TimelineNode(
+          date: concession.createdAt,
+          title: 'Concession ${concession.status.label}',
+          subtitle:
+              '${concession.category} support: ${moneyFormat.format(concession.amount)}',
+          color: statusColor(concession.status.label),
+          icon: Icons.verified_outlined,
+        ),
+      );
     }
 
-    // 3. Add payments
-    for (final p in payments) {
-      if (p.status == PaymentStatus.completed) {
-        timelineItems.add(
-          _TimelineNode(
-            date: p.date,
-            title: 'Payment Received',
-            subtitle:
-                'Receipt: ${p.receiptNo} | Amount: ${moneyFormat.format(p.amount)}',
-            color: const Color(0xFF047857),
-            icon: Icons.check_circle_outline,
-          ),
-        );
-      }
+    for (final payment in payments) {
+      timelineItems.add(
+        _TimelineNode(
+          date: payment.date,
+          title: 'Payment ${payment.status.label}',
+          subtitle:
+              '${payment.receiptNo} | ${moneyFormat.format(payment.amount)}',
+          color: statusColor(payment.status.label),
+          icon: Icons.payments_outlined,
+        ),
+      );
     }
 
-    // Sort items chronologically
     timelineItems.sort((a, b) => b.date.compareTo(a.date));
 
     if (timelineItems.isEmpty) {
       return const EmptyState(message: 'No ledger timeline activities.');
     }
 
-    return ListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: timelineItems.length,
-      itemBuilder: (context, index) {
-        final node = timelineItems[index];
-        final isLast = index == timelineItems.length - 1;
-
+    return Column(
+      children: timelineItems.map((node) {
+        final isLast = node == timelineItems.last;
         return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -952,7 +1280,7 @@ class _FeeTimeline extends StatelessWidget {
                 if (!isLast)
                   Container(
                     width: 2,
-                    height: 48,
+                    height: 44,
                     color: const Color(0xFFE2E8F0),
                   ),
               ],
@@ -960,35 +1288,39 @@ class _FeeTimeline extends StatelessWidget {
             const SizedBox(width: 14),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.only(top: 4, bottom: 20),
-                child: Column(
+                padding: const EdgeInsets.only(top: 4, bottom: 18),
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Text(
-                          node.title,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF1E293B),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            node.title,
+                            style: const TextStyle(
+                              color: Color(0xFF1E293B),
+                              fontWeight: FontWeight.w900,
+                            ),
                           ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          DateFormat.yMMMd().format(node.date),
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFF94A3B8),
+                          const SizedBox(height: 4),
+                          Text(
+                            node.subtitle,
+                            style: const TextStyle(
+                              color: Color(0xFF64748B),
+                              fontSize: 12,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(width: 12),
                     Text(
-                      node.subtitle,
+                      DateFormat.yMMMd().format(node.date),
                       style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF64748B),
+                        color: Color(0xFF94A3B8),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ],
@@ -997,9 +1329,207 @@ class _FeeTimeline extends StatelessWidget {
             ),
           ],
         );
-      },
+      }).toList(),
     );
   }
+}
+
+class _CompactListRow extends StatelessWidget {
+  const _CompactListRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.trailing,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Widget trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE0F2F1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: const Color(0xFF0F766E), size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF111827),
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          trailing,
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniMetric extends StatelessWidget {
+  const _MiniMetric({required this.value, required this.label});
+
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 112,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Color(0xFF475569),
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            label.toUpperCase(),
+            style: const TextStyle(
+              color: Color(0xFF64748B),
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MoneyLegend extends StatelessWidget {
+  const _MoneyLegend({
+    required this.color,
+    required this.value,
+    required this.label,
+  });
+
+  final Color color;
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          margin: const EdgeInsets.only(top: 5),
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                value,
+                style: const TextStyle(
+                  color: Color(0xFF111827),
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Color(0xFF111827),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PanelBadge extends StatelessWidget {
+  const _PanelBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Color(0xFF64748B),
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _ActivityMetric {
+  const _ActivityMetric({
+    required this.label,
+    required this.count,
+    required this.amount,
+    required this.status,
+  });
+
+  final String label;
+  final String count;
+  final double amount;
+  final String status;
 }
 
 class _TimelineNode {
@@ -1016,4 +1546,22 @@ class _TimelineNode {
   final String subtitle;
   final Color color;
   final IconData icon;
+}
+
+List<Student> _linkedStudentsForParent(AppState state) {
+  final guardianId = state.currentUser?.guardianId;
+  if (guardianId == null) return const [];
+  return state.students
+      .where((student) => student.guardianId == guardianId)
+      .toList();
+}
+
+Student? _selectedStudent(AppState state, List<Student> linkedStudents) {
+  if (linkedStudents.isEmpty) return null;
+  for (final student in linkedStudents) {
+    if (student.id == state.selectedStudentId) {
+      return student;
+    }
+  }
+  return linkedStudents.first;
 }

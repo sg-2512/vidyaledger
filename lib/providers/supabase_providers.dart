@@ -27,8 +27,14 @@ Future<AppUser?> refreshAppStateFromSupabase(
 
   final user = currentUser ?? await service.loadCurrentAppUser();
   final snapshot = await service.loadSnapshot();
+  final selectedStudentId = ref.read(appControllerProvider).selectedStudentId;
   ref
       .read(appControllerProvider.notifier)
-      .replaceState(snapshot.toAppState(currentUser: user));
+      .replaceState(
+        snapshot.toAppState(
+          currentUser: user,
+          selectedStudentId: selectedStudentId,
+        ),
+      );
   return user;
 }

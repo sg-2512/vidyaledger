@@ -1,61 +1,52 @@
 import '../models/models.dart';
 
-const staffRoles = {
-  UserRole.admin,
-  UserRole.principal,
-  UserRole.accountant,
-  UserRole.clerk,
-};
+const staffRoles = {UserRole.admin};
 
-const accountingRoles = {
-  UserRole.admin,
-  UserRole.principal,
-  UserRole.accountant,
-};
+const accountingRoles = {UserRole.admin};
 
 const adminOnlyRoles = {UserRole.admin};
 
-const setupRoles = {UserRole.admin, UserRole.principal};
+const setupRoles = {UserRole.admin};
 
 bool canAccessRoute(UserRole role, String path) {
   if (path.startsWith('/students/')) {
-    return role == UserRole.parent || staffRoles.contains(role);
+    // Parents can view their children's data, students can only view their own
+    return role == UserRole.parent;
   }
 
   return switch (path) {
-    '/dashboard' => role == UserRole.parent || staffRoles.contains(role),
-    '/students' => role == UserRole.parent || staffRoles.contains(role),
-    '/fees' => accountingRoles.contains(role),
-    '/concessions' => accountingRoles.contains(role),
-    '/payments' => staffRoles.contains(role),
-    '/reconciliation' => accountingRoles.contains(role),
-    '/reports' => accountingRoles.contains(role),
-    '/settings' => setupRoles.contains(role),
-    _ => false,
+    '/dashboard' => role == UserRole.admin || role == UserRole.parent,
+    '/fees' => role == UserRole.admin,
+    '/concessions' => role == UserRole.admin,
+    '/payments' => role == UserRole.admin,
+    '/reports' => role == UserRole.admin,
+    '/settings' => role == UserRole.admin,
+    _ => role == UserRole.parent || role == UserRole.student,
   };
 }
 
 String defaultRouteForRole(UserRole role) {
   return switch (role) {
     UserRole.parent => '/dashboard',
-    UserRole.clerk => '/payments',
+    UserRole.student => '/dashboard',
     _ => '/dashboard',
   };
 }
 
 String accessMessageForPath(String path) {
   return switch (path) {
-    '/dashboard' => 'The school-wide dashboard is available to staff roles.',
+    '/dashboard' => 'The school-wide dashboard is available to staff and parents.',
     '/fees' =>
-      'Fee configuration is available to admin, principal, and accountant roles.',
+      'Fee configuration is available to admin role.',
     '/concessions' =>
-      'Concession approvals are available to admin, principal, and accountant roles.',
+      'Concession approvals are available to admin role.',
     '/reconciliation' =>
-      'Settlement reconciliation is available to admin, principal, and accountant roles.',
+      'Settlement reconciliation is available to admin role.',
     '/reports' =>
-      'Finance reports are available to admin, principal, and accountant roles.',
+      'Finance reports are available to admin role.',
     '/settings' =>
-      'School settings are available to admin and principal roles.',
+      'School settings are available to admin role.',
+    '/students' => 'Student information is available to parents.',
     _ => 'This role does not have access to this workspace.',
   };
 }

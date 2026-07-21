@@ -1,4 +1,4 @@
-enum UserRole { admin, principal, accountant, clerk, parent }
+enum UserRole { admin, parent, student }
 
 enum PaymentMode { upi, cash, cheque, bankTransfer }
 
@@ -17,10 +17,8 @@ enum PaymentRequestStatus { created, shared, paid, expired, failed, cancelled }
 extension UserRoleLabel on UserRole {
   String get label => switch (this) {
     UserRole.admin => 'Admin',
-    UserRole.principal => 'Principal',
-    UserRole.accountant => 'Accountant',
-    UserRole.clerk => 'Fee Clerk',
     UserRole.parent => 'Parent',
+    UserRole.student => 'Student',
   };
 }
 

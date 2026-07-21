@@ -9,6 +9,7 @@ import '../providers/finance_providers.dart';
 import '../widgets/charts.dart';
 import '../widgets/common.dart';
 import 'parent_dashboard_screen.dart';
+import 'student_dashboard_screen.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -19,6 +20,9 @@ class DashboardScreen extends ConsumerWidget {
     final user = state.currentUser;
     if (user != null && user.role == UserRole.parent) {
       return const ParentDashboardScreen();
+    }
+    if (user != null && user.role == UserRole.student) {
+      return const StudentDashboardScreen();
     }
 
     final stats = ref.watch(dashboardStatsProvider);

@@ -14,10 +14,8 @@ class LoginScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final roles = [
       UserRole.admin,
-      UserRole.principal,
-      UserRole.accountant,
-      UserRole.clerk,
       UserRole.parent,
+      UserRole.student,
     ];
 
     return Scaffold(
@@ -389,20 +387,16 @@ class _RolePanelState extends ConsumerState<_RolePanel> {
   IconData _roleIcon(UserRole role) {
     return switch (role) {
       UserRole.admin => Icons.admin_panel_settings,
-      UserRole.principal => Icons.school,
-      UserRole.accountant => Icons.calculate,
-      UserRole.clerk => Icons.receipt_long,
       UserRole.parent => Icons.family_restroom,
+      UserRole.student => Icons.person,
     };
   }
 
   String _roleEmail(UserRole role) {
     return switch (role) {
       UserRole.admin => 'admin@vidyaledger.demo',
-      UserRole.principal => 'principal@vidyaledger.demo',
-      UserRole.accountant => 'accounts@vidyaledger.demo',
-      UserRole.clerk => 'clerk@vidyaledger.demo',
       UserRole.parent => 'parent@vidyaledger.demo',
+      UserRole.student => 'student@vidyaledger.demo',
     };
   }
 }
@@ -520,10 +514,8 @@ class _RoleTile extends StatelessWidget {
   String _roleDescription(UserRole role) {
     return switch (role) {
       UserRole.admin => 'Full dashboard, fees, users, and reports',
-      UserRole.principal => 'Approvals, risk, concessions, and reports',
-      UserRole.accountant => 'Payments, ledgers, and reconciliation',
-      UserRole.clerk => 'Student search and counter collection',
       UserRole.parent => 'Linked child dues and receipts',
+      UserRole.student => 'View academic records, attendance, and fee status',
     };
   }
 }

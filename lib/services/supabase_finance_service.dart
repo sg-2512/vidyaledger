@@ -34,9 +34,10 @@ class FinanceSnapshot {
   final List<ReconciliationItem> reconciliationItems;
   final List<AuditLog> auditLogs;
 
-  AppState toAppState({AppUser? currentUser}) {
+  AppState toAppState({AppUser? currentUser, String? selectedStudentId}) {
     return AppState(
       currentUser: currentUser,
+      selectedStudentId: selectedStudentId,
       school: school,
       users: users,
       guardians: guardians,
@@ -625,10 +626,11 @@ class SupabaseFinanceService {
 
   UserRole _userRole(String? value) {
     return switch (value) {
-      'principal' => UserRole.principal,
-      'accountant' => UserRole.accountant,
-      'clerk' => UserRole.clerk,
+      'principal' => UserRole.admin,
+      'accountant' => UserRole.admin,
+      'clerk' => UserRole.admin,
       'parent' => UserRole.parent,
+      'student' => UserRole.student,
       _ => UserRole.admin,
     };
   }
