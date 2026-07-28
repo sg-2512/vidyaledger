@@ -14,7 +14,10 @@ bool canAccessRoute(UserRole role, String path) {
   }
 
   return switch (path) {
-    '/dashboard' => role == UserRole.admin || role == UserRole.parent,
+    '/dashboard' =>
+      role == UserRole.admin ||
+          role == UserRole.parent ||
+          role == UserRole.student,
     '/students' => role == UserRole.admin || role == UserRole.parent,
     '/fees' => role == UserRole.admin,
     '/concessions' => role == UserRole.admin,
@@ -37,7 +40,7 @@ String defaultRouteForRole(UserRole role) {
 String accessMessageForPath(String path) {
   return switch (path) {
     '/dashboard' =>
-      'The school-wide dashboard is available to staff and parents.',
+      'The dashboard is available to staff, parents, and students.',
     '/fees' => 'Fee configuration is available to admin role.',
     '/concessions' => 'Concession approvals are available to admin role.',
     '/reconciliation' =>
