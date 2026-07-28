@@ -1,0 +1,9 @@
+{
+  "name": "VidyaLedger",
+  "short_name": "VidyaLedger",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f7fafc",
+  "theme_color": "#0f766e",
+  "description": "Smart school fee and finance management for Indian schools."
+}
