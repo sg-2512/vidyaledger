@@ -19,7 +19,10 @@ flutter run -d chrome \
   --dart-define=SUPABASE_PUBLISHABLE_KEY=sb_publishable_your_key
 ```
 
-The current app defaults to local demo mode. The schema and RLS are ready for the real backend connection layer.
+The current app defaults to local demo mode. In the judge-demo UI, principal,
+accountant, and clerk Supabase roles are mapped into the Admin workspace. Parent
+opens the linked-child parent workspace. Student is available in local demo mode
+and can be added to Supabase later if the backend enum is extended.
 
 ## Current Integration Status
 
@@ -36,6 +39,7 @@ It can read these tables and map rows into app models:
 - `fee_demands`
 - `concessions`
 - `payments`
+- `payment_requests`
 - `reconciliation_items`
 - `audit_logs`
 

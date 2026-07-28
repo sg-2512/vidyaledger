@@ -104,7 +104,13 @@ flutter run -d chrome \
 
 ## Demo Accounts
 
-In demo mode, use the role buttons on the login screen. In Supabase mode, use the Auth users created in Supabase:
+In demo mode, use the role buttons on the login screen:
+
+- Admin
+- Parent
+- Student
+
+In Supabase mode, use the Auth users created in Supabase:
 
 - `admin@vidyaledger.demo`
 - `principal@vidyaledger.demo`
@@ -112,16 +118,22 @@ In demo mode, use the role buttons on the login screen. In Supabase mode, use th
 - `clerk@vidyaledger.demo`
 - `parent@vidyaledger.demo`
 
+The current UI presents a simpler judge-demo role model. Supabase staff roles
+such as principal, accountant, and clerk are mapped into the Admin workspace,
+while the parent account opens the linked-child parent workspace. The Student
+role is available in demo mode and can be added to Supabase later if needed.
+
 Role access is enforced in the Flutter UI:
 
-- Admin, principal, and accountant can use finance configuration, concessions, reconciliation, and reports.
-- Fee clerk can use student lookup and payment collection.
-- Parent can only view linked student fee details and receipts.
+- Admin can use dashboard, student register, fee configuration, concessions,
+  payments, reconciliation, reports, settings, reminders, and installments.
+- Parent can view linked child dues, receipts, payment visibility, and student
+  details.
+- Student can view own student/fee workspace in demo mode.
 
 The student register supports class, section, and category filters, complete
-student-detail PDF export, staff-only student creation, and paste-based CSV
-student import inside the signed-in school tenant. Admin and principal users can
-also open Settings to edit the
+student-detail PDF export, admin student creation, and paste-based CSV student
+import inside the signed-in school tenant. Admin users can also open Settings to edit the
 school profile and configure class-section capacity, class teacher, room, and
 active/archive status.
 
