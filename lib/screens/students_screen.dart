@@ -57,7 +57,7 @@ class _StudentsScreenState extends ConsumerState<StudentsScreen> {
           categoryFilter == 'All' || student.category == categoryFilter;
       return matchesSearch && matchesClass && matchesSection && matchesCategory;
     }).toList();
-    final canManageStudents = user != null && user.role != UserRole.parent;
+    final canManageStudents = user?.role == UserRole.admin;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -234,40 +234,42 @@ class _StudentsScreenState extends ConsumerState<StudentsScreen> {
                             icon: const Icon(Icons.open_in_new, size: 16),
                             label: const Text('Open'),
                           ),
-                          const SizedBox(width: 4),
-                          IconButton(
-                            tooltip: 'Send WhatsApp / SMS Reminder',
-                            onPressed: () {
-                              showDialog(
-                                context: context,
-                                builder: (_) => ReminderDialog(
-                                  student: student,
-                                  guardian: guardian,
-                                  pendingAmount: summary.pending,
-                                ),
-                              );
-                            },
-                            icon: const Icon(
-                              Icons.chat_bubble_outline,
-                              color: Color(0xFF16A34A),
-                              size: 18,
+                          if (canManageStudents) ...[
+                            const SizedBox(width: 4),
+                            IconButton(
+                              tooltip: 'Send WhatsApp / SMS Reminder',
+                              onPressed: () {
+                                showDialog(
+                                  context: context,
+                                  builder: (_) => ReminderDialog(
+                                    student: student,
+                                    guardian: guardian,
+                                    pendingAmount: summary.pending,
+                                  ),
+                                );
+                              },
+                              icon: const Icon(
+                                Icons.chat_bubble_outline,
+                                color: Color(0xFF16A34A),
+                                size: 18,
+                              ),
                             ),
-                          ),
-                          IconButton(
-                            tooltip: 'Create Installment EMI Plan',
-                            onPressed: () {
-                              showDialog(
-                                context: context,
-                                builder: (_) =>
-                                    InstallmentDialog(student: student),
-                              );
-                            },
-                            icon: const Icon(
-                              Icons.calendar_month_outlined,
-                              color: Color(0xFF7C3AED),
-                              size: 18,
+                            IconButton(
+                              tooltip: 'Create Installment EMI Plan',
+                              onPressed: () {
+                                showDialog(
+                                  context: context,
+                                  builder: (_) =>
+                                      InstallmentDialog(student: student),
+                                );
+                              },
+                              icon: const Icon(
+                                Icons.calendar_month_outlined,
+                                color: Color(0xFF7C3AED),
+                                size: 18,
+                              ),
                             ),
-                          ),
+                          ],
                         ],
                       ),
                     ),

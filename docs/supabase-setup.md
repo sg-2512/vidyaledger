@@ -9,6 +9,7 @@
    - `accounts@vidyaledger.demo`
    - `clerk@vidyaledger.demo`
    - `parent@vidyaledger.demo`
+   - `student@vidyaledger.demo`
 5. Insert matching rows in `public.users` with each auth user UUID.
 6. Copy the Project URL and publishable key from Supabase.
 7. Run Flutter with:
@@ -21,8 +22,8 @@ flutter run -d chrome \
 
 The current app defaults to local demo mode. In the judge-demo UI, principal,
 accountant, and clerk Supabase roles are mapped into the Admin workspace. Parent
-opens the linked-child parent workspace. Student is available in local demo mode
-and can be added to Supabase later if the backend enum is extended.
+opens the linked-child parent workspace. Student opens the student workspace
+linked to the seeded Asha Sharma record.
 
 ## Current Integration Status
 
@@ -62,7 +63,8 @@ seeded demo-mode role buttons.
    concessions, payments, reconciliation rows, and the starter audit log.
 6. For existing projects, run the upgrade SQL files listed in `README.md`,
    including `upgrade_cheque_lifecycle.sql` and
-   `upgrade_payment_requests.sql`.
+   `upgrade_payment_requests.sql`. To enable the deployed Student login, also
+   run `upgrade_student_demo_login.sql` after creating the student Auth user.
 7. Start Flutter with `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`.
 8. Login with one of the Supabase Auth demo users.
 9. Verify dashboard data, fee generation, concession approvals, payment

@@ -1,6 +1,6 @@
 create extension if not exists "pgcrypto";
 
-create type user_role as enum ('admin', 'principal', 'accountant', 'clerk', 'parent');
+create type user_role as enum ('admin', 'principal', 'accountant', 'clerk', 'parent', 'student');
 create type concession_status as enum ('draft', 'submitted', 'approved', 'rejected');
 create type payment_mode as enum ('upi', 'cash', 'cheque', 'bank_transfer');
 create type payment_status as enum ('pending', 'completed', 'bounced', 'reversed');

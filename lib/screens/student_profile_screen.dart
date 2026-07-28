@@ -28,6 +28,7 @@ class StudentProfileScreen extends ConsumerWidget {
     }
 
     final guardian = _guardianFor(state, student.guardianId);
+    final canUseStaffActions = user?.role == UserRole.admin;
     final summary = ref.watch(financeSummaryProvider(student.id));
     final demands = state.feeDemands
         .where((item) => item.studentId == student.id)
@@ -56,42 +57,44 @@ class StudentProfileScreen extends ConsumerWidget {
           title: student.name,
           subtitle:
               '${student.admissionNo} | Class ${student.classLabel} | Guardian: ${guardian?.name ?? 'Not linked'}',
-          trailing: Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              OutlinedButton.icon(
-                onPressed: () {
-                  showDialog(
-                    context: context,
-                    builder: (_) => ReminderDialog(
-                      student: student,
-                      guardian: guardian,
-                      pendingAmount: summary.pending,
+          trailing: canUseStaffActions
+              ? Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        showDialog(
+                          context: context,
+                          builder: (_) => ReminderDialog(
+                            student: student,
+                            guardian: guardian,
+                            pendingAmount: summary.pending,
+                          ),
+                        );
+                      },
+                      icon: const Icon(
+                        Icons.chat_bubble_outline,
+                        color: Color(0xFF16A34A),
+                      ),
+                      label: const Text('Send Reminder'),
                     ),
-                  );
-                },
-                icon: const Icon(
-                  Icons.chat_bubble_outline,
-                  color: Color(0xFF16A34A),
-                ),
-                label: const Text('Send Reminder'),
-              ),
-              FilledButton.icon(
-                onPressed: () {
-                  showDialog(
-                    context: context,
-                    builder: (_) => InstallmentDialog(student: student),
-                  );
-                },
-                icon: const Icon(Icons.calendar_month_outlined),
-                label: const Text('Create EMI Plan'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF7C3AED),
-                ),
-              ),
-            ],
-          ),
+                    FilledButton.icon(
+                      onPressed: () {
+                        showDialog(
+                          context: context,
+                          builder: (_) => InstallmentDialog(student: student),
+                        );
+                      },
+                      icon: const Icon(Icons.calendar_month_outlined),
+                      label: const Text('Create EMI Plan'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF7C3AED),
+                      ),
+                    ),
+                  ],
+                )
+              : null,
         ),
         GridView.count(
           crossAxisCount: statColumns,

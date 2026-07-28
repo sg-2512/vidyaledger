@@ -52,7 +52,8 @@ values
   ('40000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'Principal Rao', 'principal@vidyaledger.demo', 'principal', null),
   ('40000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000001', 'Neha Accountant', 'accounts@vidyaledger.demo', 'accountant', null),
   ('40000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000001', 'Fee Clerk', 'clerk@vidyaledger.demo', 'clerk', null),
-  ('40000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000001', 'Meera Sharma', 'parent@vidyaledger.demo', 'parent', '10000000-0000-0000-0000-000000000001');
+  ('40000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000001', 'Meera Sharma', 'parent@vidyaledger.demo', 'parent', '10000000-0000-0000-0000-000000000001'),
+  ('40000000-0000-0000-0000-000000000006', '00000000-0000-0000-0000-000000000001', 'Asha Sharma', 'student@vidyaledger.demo', 'student', '10000000-0000-0000-0000-000000000001');
 
 insert into students (id, school_id, guardian_id, admission_no, name, class_name, section, category, phone)
 values

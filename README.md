@@ -83,6 +83,7 @@ supabase/upgrade_cheque_lifecycle.sql
 supabase/upgrade_payment_requests.sql
 supabase/upgrade_student_register.sql
 supabase/upgrade_school_settings.sql
+supabase/upgrade_student_demo_login.sql
 ```
 
 This adds database-issued receipt numbers, payment idempotency keys, atomic
@@ -117,11 +118,12 @@ In Supabase mode, use the Auth users created in Supabase:
 - `accounts@vidyaledger.demo`
 - `clerk@vidyaledger.demo`
 - `parent@vidyaledger.demo`
+- `student@vidyaledger.demo`
 
 The current UI presents a simpler judge-demo role model. Supabase staff roles
 such as principal, accountant, and clerk are mapped into the Admin workspace,
-while the parent account opens the linked-child parent workspace. The Student
-role is available in demo mode and can be added to Supabase later if needed.
+while the parent account opens the linked-child parent workspace. The student
+account opens the student workspace linked to the seeded Asha Sharma record.
 
 Role access is enforced in the Flutter UI:
 
