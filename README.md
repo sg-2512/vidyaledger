@@ -15,6 +15,12 @@ VidyaLedger is a Flutter Web hackathon prototype for Indian school fee and finan
 
 This repository contains a working Flutter Web app with demo-mode fallback and Supabase-backed login/data loading when credentials are provided at build time.
 
+## Submission Links
+
+- Live demo: https://sg-2512.github.io/vidyaledger/?v=7281e7f#/login
+- Demo video: https://drive.google.com/file/d/1jE6cePC1n12MpakrjX__YH6LMKEF1sSw/view?usp=sharing
+- Source code: https://github.com/sg-2512/vidyaledger
+
 ## Architecture Status
 
 - Demo state: Riverpod `NotifierProvider` with seeded Indian-school finance data when Supabase keys are absent.
