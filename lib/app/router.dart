@@ -14,7 +14,7 @@ import '../screens/students_screen.dart';
 import '../widgets/role_gate.dart';
 
 final appRouter = GoRouter(
-  initialLocation: '/login',
+  initialLocation: '/dashboard',
   routes: [
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
     ShellRoute(

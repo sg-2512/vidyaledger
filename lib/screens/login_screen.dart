@@ -12,11 +12,7 @@ class LoginScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final roles = [
-      UserRole.admin,
-      UserRole.parent,
-      UserRole.student,
-    ];
+    final roles = [UserRole.admin, UserRole.parent, UserRole.student];
 
     return Scaffold(
       backgroundColor: const Color(0xFFF2F6F7),
@@ -352,11 +348,10 @@ class _RolePanelState extends ConsumerState<_RolePanel> {
       context.go(defaultRouteForRole(user?.role ?? selectedRole));
     } catch (error) {
       if (!mounted) return;
-      final message = _friendlyLoginError(error);
-      setState(() => loginError = message);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      setState(() {
+        loginError = _friendlyLoginError(error);
+      });
+      _openDemoWorkspace();
     } finally {
       if (mounted) setState(() => loading = false);
     }

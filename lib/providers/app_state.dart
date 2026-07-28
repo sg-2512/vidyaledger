@@ -23,6 +23,8 @@ class AppState {
     required this.paymentRequests,
     required this.reconciliationItems,
     required this.auditLogs,
+    this.installments = const [],
+    this.reminderLogs = const [],
   });
 
   final AppUser? currentUser;
@@ -40,6 +42,8 @@ class AppState {
   final List<PaymentRequest> paymentRequests;
   final List<ReconciliationItem> reconciliationItems;
   final List<AuditLog> auditLogs;
+  final List<FeeInstallment> installments;
+  final List<ReminderLog> reminderLogs;
 
   factory AppState.seeded() {
     final now = DateTime.now();
@@ -449,6 +453,55 @@ class AppState {
           createdAt: now.subtract(const Duration(days: 8)),
         ),
       ],
+      installments: [
+        FeeInstallment(
+          id: 'inst-1',
+          studentId: 's-1',
+          feeDemandId: 'fd-1',
+          installmentNo: 1,
+          totalInstallments: 3,
+          title: 'Term 1 Tuition (1/3)',
+          amount: 5000,
+          dueDate: now.subtract(const Duration(days: 15)),
+          status: InstallmentStatus.paid,
+          paidAmount: 5000,
+          paidAt: now.subtract(const Duration(days: 16)),
+        ),
+        FeeInstallment(
+          id: 'inst-2',
+          studentId: 's-1',
+          feeDemandId: 'fd-1',
+          installmentNo: 2,
+          totalInstallments: 3,
+          title: 'Term 1 Tuition (2/3)',
+          amount: 4000,
+          dueDate: now.add(const Duration(days: 15)),
+          status: InstallmentStatus.pending,
+        ),
+        FeeInstallment(
+          id: 'inst-3',
+          studentId: 's-1',
+          feeDemandId: 'fd-1',
+          installmentNo: 3,
+          totalInstallments: 3,
+          title: 'Term 1 Tuition (3/3)',
+          amount: 4000,
+          dueDate: now.add(const Duration(days: 45)),
+          status: InstallmentStatus.pending,
+        ),
+      ],
+      reminderLogs: [
+        ReminderLog(
+          id: 'rl-1',
+          studentId: 's-1',
+          guardianPhone: '+91 98765 10001',
+          channel: ReminderChannel.whatsapp,
+          templateType: ReminderTemplateType.dueReminder,
+          message:
+              'Dear Meera Sharma, fee balance reminder for Asha Sharma of Rs 4000 due on 15 Aug 2026.',
+          sentAt: now.subtract(const Duration(days: 3)),
+        ),
+      ],
     );
   }
 
@@ -470,6 +523,8 @@ class AppState {
     List<PaymentRequest>? paymentRequests,
     List<ReconciliationItem>? reconciliationItems,
     List<AuditLog>? auditLogs,
+    List<FeeInstallment>? installments,
+    List<ReminderLog>? reminderLogs,
   }) {
     return AppState(
       currentUser: clearCurrentUser ? null : currentUser ?? this.currentUser,
@@ -489,6 +544,8 @@ class AppState {
       paymentRequests: paymentRequests ?? this.paymentRequests,
       reconciliationItems: reconciliationItems ?? this.reconciliationItems,
       auditLogs: auditLogs ?? this.auditLogs,
+      installments: installments ?? this.installments,
+      reminderLogs: reminderLogs ?? this.reminderLogs,
     );
   }
 }
@@ -970,6 +1027,105 @@ class AppController extends Notifier<AppState> {
       (student) =>
           student.id == studentId && student.guardianId == user.guardianId,
     );
+  }
+
+  ReminderLog sendReminder({
+    required String studentId,
+    required ReminderChannel channel,
+    required ReminderTemplateType templateType,
+    required String message,
+  }) {
+    final student = state.students.firstWhere((s) => s.id == studentId);
+    final guardian = state.guardians.firstWhere(
+      (g) => g.id == student.guardianId,
+      orElse: () => Guardian(
+        id: 'g-unknown',
+        name: student.name,
+        phone: student.phone,
+        email: '',
+        address: '',
+      ),
+    );
+    final log = ReminderLog(
+      id: _id('rl'),
+      studentId: studentId,
+      guardianPhone: guardian.phone,
+      channel: channel,
+      templateType: templateType,
+      message: message,
+      sentAt: DateTime.now(),
+    );
+    state = state.copyWith(reminderLogs: [log, ...state.reminderLogs]);
+    _audit(
+      'Sent ${channel.label} reminder to ${guardian.name} for ${student.name}',
+      'reminder',
+    );
+    return log;
+  }
+
+  List<FeeInstallment> createInstallmentPlan({
+    required String studentId,
+    required String feeDemandId,
+    required int numberOfInstallments,
+    required double totalAmount,
+    required DateTime firstDueDate,
+  }) {
+    final demand = state.feeDemands
+        .where((fd) => fd.id == feeDemandId)
+        .firstOrNull;
+    final planTitle = demand?.feeHeadId ?? 'Custom Installment Plan';
+    final perInstallment = (totalAmount / numberOfInstallments).roundToDouble();
+    final newInstallments = <FeeInstallment>[];
+
+    for (var i = 1; i <= numberOfInstallments; i++) {
+      final isLast = i == numberOfInstallments;
+      final amount = isLast
+          ? totalAmount - (perInstallment * (numberOfInstallments - 1))
+          : perInstallment;
+      final dueDate = DateTime(
+        firstDueDate.year,
+        firstDueDate.month + (i - 1),
+        firstDueDate.day,
+      );
+      final inst = FeeInstallment(
+        id: _id('inst'),
+        studentId: studentId,
+        feeDemandId: feeDemandId,
+        installmentNo: i,
+        totalInstallments: numberOfInstallments,
+        title: '$planTitle (EMI $i/$numberOfInstallments)',
+        amount: amount,
+        dueDate: dueDate,
+        status: dueDate.isBefore(DateTime.now())
+            ? InstallmentStatus.overdue
+            : InstallmentStatus.pending,
+      );
+      newInstallments.add(inst);
+    }
+
+    state = state.copyWith(
+      installments: [...state.installments, ...newInstallments],
+    );
+    _audit(
+      'Created $numberOfInstallments installments for student $studentId',
+      'installment',
+    );
+    return newInstallments;
+  }
+
+  void recordInstallmentPayment(String installmentId, double amount) {
+    final updated = state.installments.map((inst) {
+      if (inst.id != installmentId) return inst;
+      final newPaid = inst.paidAmount + amount;
+      final isFullyPaid = newPaid >= inst.amount;
+      return inst.copyWith(
+        status: isFullyPaid ? InstallmentStatus.paid : inst.status,
+        paidAmount: newPaid,
+        paidAt: isFullyPaid ? DateTime.now() : inst.paidAt,
+      );
+    }).toList();
+    state = state.copyWith(installments: updated);
+    _audit('Recorded payment for installment $installmentId', 'installment');
   }
 
   void _audit(String action, String objectType) {

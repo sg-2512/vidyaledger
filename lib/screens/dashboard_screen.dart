@@ -8,6 +8,7 @@ import '../providers/app_state.dart';
 import '../providers/finance_providers.dart';
 import '../widgets/charts.dart';
 import '../widgets/common.dart';
+import '../widgets/reminder_dialog.dart';
 import 'parent_dashboard_screen.dart';
 import 'student_dashboard_screen.dart';
 
@@ -317,11 +318,7 @@ class _DashboardHero extends StatelessWidget {
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      Icons.circle,
-                      size: 8,
-                      color: Color(0xFF14B8A6),
-                    ),
+                    Icon(Icons.circle, size: 8, color: Color(0xFF14B8A6)),
                     SizedBox(width: 6),
                     Text(
                       'Live Demo Workspace',
@@ -407,8 +404,7 @@ class _DashboardHero extends StatelessWidget {
                                 strokeWidth: 8,
                                 strokeCap: StrokeCap.round,
                                 backgroundColor: const Color(0xFF334155),
-                                valueColor:
-                                    const AlwaysStoppedAnimation<Color>(
+                                valueColor: const AlwaysStoppedAnimation<Color>(
                                   Color(0xFF14B8A6),
                                 ),
                               ),
@@ -579,7 +575,9 @@ class _AnimatedStatCardState extends State<_AnimatedStatCard> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: _hovered ? widget.accent.withValues(alpha: 0.3) : const Color(0xFFE2E8F0),
+            color: _hovered
+                ? widget.accent.withValues(alpha: 0.3)
+                : const Color(0xFFE2E8F0),
           ),
           boxShadow: _hovered
               ? [
@@ -643,10 +641,7 @@ class _AnimatedStatCardState extends State<_AnimatedStatCard> {
               const SizedBox(height: 6),
               Text(
                 widget.footer!,
-                style: const TextStyle(
-                  color: Color(0xFF94A3B8),
-                  fontSize: 11,
-                ),
+                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
               ),
             ],
           ],
@@ -769,9 +764,7 @@ class _ActionButtonState extends State<_ActionButton> {
                     ),
                     child: Icon(
                       widget.icon,
-                      color: _hovered
-                          ? Colors.white
-                          : const Color(0xFF0F766E),
+                      color: _hovered ? Colors.white : const Color(0xFF0F766E),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -848,6 +841,36 @@ class _DefaulterList extends ConsumerWidget {
               StatusPill(
                 label: student.category,
                 color: const Color(0xFF0F766E),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                tooltip: 'Send WhatsApp / SMS Reminder',
+                onPressed: () {
+                  final state = ref.read(appControllerProvider);
+                  final guardian = state.guardians.firstWhere(
+                    (g) => g.id == student.guardianId,
+                    orElse: () => Guardian(
+                      id: 'g-unknown',
+                      name: student.name,
+                      phone: student.phone,
+                      email: '',
+                      address: '',
+                    ),
+                  );
+                  showDialog(
+                    context: context,
+                    builder: (_) => ReminderDialog(
+                      student: student,
+                      guardian: guardian,
+                      pendingAmount: summary.pending,
+                    ),
+                  );
+                },
+                icon: const Icon(
+                  Icons.chat_bubble_outline,
+                  color: Color(0xFF16A34A),
+                  size: 20,
+                ),
               ),
             ],
           ),

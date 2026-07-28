@@ -10,6 +10,8 @@ import '../providers/supabase_providers.dart';
 import '../services/report_service.dart';
 import '../utils/csv_utils.dart';
 import '../widgets/common.dart';
+import '../widgets/installment_dialog.dart';
+import '../widgets/reminder_dialog.dart';
 
 class StudentsScreen extends ConsumerStatefulWidget {
   const StudentsScreen({super.key});
@@ -223,10 +225,50 @@ class _StudentsScreenState extends ConsumerState<StudentsScreen> {
                       ),
                     ),
                     DataCell(
-                      TextButton.icon(
-                        onPressed: () => context.go('/students/${student.id}'),
-                        icon: const Icon(Icons.open_in_new),
-                        label: const Text('Open'),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          TextButton.icon(
+                            onPressed: () =>
+                                context.go('/students/${student.id}'),
+                            icon: const Icon(Icons.open_in_new, size: 16),
+                            label: const Text('Open'),
+                          ),
+                          const SizedBox(width: 4),
+                          IconButton(
+                            tooltip: 'Send WhatsApp / SMS Reminder',
+                            onPressed: () {
+                              showDialog(
+                                context: context,
+                                builder: (_) => ReminderDialog(
+                                  student: student,
+                                  guardian: guardian,
+                                  pendingAmount: summary.pending,
+                                ),
+                              );
+                            },
+                            icon: const Icon(
+                              Icons.chat_bubble_outline,
+                              color: Color(0xFF16A34A),
+                              size: 18,
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Create Installment EMI Plan',
+                            onPressed: () {
+                              showDialog(
+                                context: context,
+                                builder: (_) =>
+                                    InstallmentDialog(student: student),
+                              );
+                            },
+                            icon: const Icon(
+                              Icons.calendar_month_outlined,
+                              color: Color(0xFF7C3AED),
+                              size: 18,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],

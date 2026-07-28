@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../models/models.dart';
 import '../providers/app_state.dart';
 import '../providers/supabase_providers.dart';
 import '../widgets/common.dart';
@@ -92,9 +93,8 @@ class _FeeEngineScreenState extends ConsumerState<FeeEngineScreen> {
                           ),
                         )
                         .toList(),
-                    onChanged: (value) => setState(
-                      () => selectedClass = value ?? selectedClass,
-                    ),
+                    onChanged: (value) =>
+                        setState(() => selectedClass = value ?? selectedClass),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -199,6 +199,67 @@ class _FeeEngineScreenState extends ConsumerState<FeeEngineScreen> {
                 )
                 .toList(),
           ),
+        ),
+        const SizedBox(height: 18),
+        SectionCard(
+          title:
+              'Installment & EMI Schedule Master (${state.installments.length})',
+          child: state.installments.isEmpty
+              ? const EmptyState(
+                  message: 'No student installment plans created yet.',
+                )
+              : SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: DataTable(
+                    columns: const [
+                      DataColumn(label: Text('Student')),
+                      DataColumn(label: Text('Installment')),
+                      DataColumn(label: Text('Amount')),
+                      DataColumn(label: Text('Paid Amount')),
+                      DataColumn(label: Text('Due Date')),
+                      DataColumn(label: Text('Status')),
+                    ],
+                    rows: state.installments.map((inst) {
+                      final student = state.students.firstWhere(
+                        (s) => s.id == inst.studentId,
+                        orElse: () => Student(
+                          id: inst.studentId,
+                          admissionNo: '-',
+                          name: 'Student ${inst.studentId}',
+                          className: '-',
+                          section: '-',
+                          guardianId: '-',
+                          category: '-',
+                          phone: '-',
+                          status: 'Active',
+                        ),
+                      );
+                      return DataRow(
+                        cells: [
+                          DataCell(
+                            Text('${student.name} (${student.classLabel})'),
+                          ),
+                          DataCell(Text(inst.title)),
+                          DataCell(Text(moneyFormat.format(inst.amount))),
+                          DataCell(Text(moneyFormat.format(inst.paidAmount))),
+                          DataCell(
+                            Text(DateFormat.yMMMd().format(inst.dueDate)),
+                          ),
+                          DataCell(
+                            StatusPill(
+                              label: inst.status.label,
+                              color: inst.status == InstallmentStatus.paid
+                                  ? const Color(0xFF047857)
+                                  : inst.status == InstallmentStatus.overdue
+                                  ? const Color(0xFFB45309)
+                                  : const Color(0xFF2563EB),
+                            ),
+                          ),
+                        ],
+                      );
+                    }).toList(),
+                  ),
+                ),
         ),
       ],
     );

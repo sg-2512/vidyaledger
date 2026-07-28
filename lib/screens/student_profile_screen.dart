@@ -8,6 +8,9 @@ import '../providers/app_state.dart';
 import '../providers/finance_providers.dart';
 import '../widgets/common.dart';
 
+import '../widgets/installment_dialog.dart';
+import '../widgets/reminder_dialog.dart';
+
 class StudentProfileScreen extends ConsumerWidget {
   const StudentProfileScreen({required this.studentId, super.key});
 
@@ -35,6 +38,10 @@ class StudentProfileScreen extends ConsumerWidget {
     final payments = state.payments
         .where((item) => item.studentId == student.id)
         .toList();
+    final studentInstallments = state.installments
+        .where((item) => item.studentId == student.id)
+        .toList();
+
     final width = MediaQuery.of(context).size.width;
     final statColumns = width > 1100
         ? 4
@@ -49,6 +56,42 @@ class StudentProfileScreen extends ConsumerWidget {
           title: student.name,
           subtitle:
               '${student.admissionNo} | Class ${student.classLabel} | Guardian: ${guardian?.name ?? 'Not linked'}',
+          trailing: Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (_) => ReminderDialog(
+                      student: student,
+                      guardian: guardian,
+                      pendingAmount: summary.pending,
+                    ),
+                  );
+                },
+                icon: const Icon(
+                  Icons.chat_bubble_outline,
+                  color: Color(0xFF16A34A),
+                ),
+                label: const Text('Send Reminder'),
+              ),
+              FilledButton.icon(
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (_) => InstallmentDialog(student: student),
+                  );
+                },
+                icon: const Icon(Icons.calendar_month_outlined),
+                label: const Text('Create EMI Plan'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF7C3AED),
+                ),
+              ),
+            ],
+          ),
         ),
         GridView.count(
           crossAxisCount: statColumns,
@@ -115,6 +158,43 @@ class StudentProfileScreen extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 18),
+        SectionCard(
+          title: 'Installments & EMI Schedule',
+          child: studentInstallments.isEmpty
+              ? const EmptyState(
+                  message: 'No installment plans configured for this student.',
+                )
+              : DataTable(
+                  columns: const [
+                    DataColumn(label: Text('Installment Title')),
+                    DataColumn(label: Text('Amount')),
+                    DataColumn(label: Text('Paid Amount')),
+                    DataColumn(label: Text('Due Date')),
+                    DataColumn(label: Text('Status')),
+                  ],
+                  rows: studentInstallments.map((inst) {
+                    return DataRow(
+                      cells: [
+                        DataCell(Text(inst.title)),
+                        DataCell(Text(moneyFormat.format(inst.amount))),
+                        DataCell(Text(moneyFormat.format(inst.paidAmount))),
+                        DataCell(Text(DateFormat.yMMMd().format(inst.dueDate))),
+                        DataCell(
+                          StatusPill(
+                            label: inst.status.label,
+                            color: inst.status == InstallmentStatus.paid
+                                ? const Color(0xFF047857)
+                                : inst.status == InstallmentStatus.overdue
+                                ? const Color(0xFFB45309)
+                                : const Color(0xFF2563EB),
+                          ),
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                ),
+        ),
+        const SizedBox(height: 18),
         LayoutBuilder(
           builder: (context, constraints) {
             final stacked = constraints.maxWidth < 800;
@@ -162,7 +242,11 @@ class StudentProfileScreen extends ConsumerWidget {
             return stacked
                 ? Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [concessionCard, const SizedBox(height: 18), paymentCard],
+                    children: [
+                      concessionCard,
+                      const SizedBox(height: 18),
+                      paymentCard,
+                    ],
                   )
                 : Row(
                     crossAxisAlignment: CrossAxisAlignment.start,

@@ -21,7 +21,6 @@ extension UserRoleLabel on UserRole {
     UserRole.student => 'Student',
   };
 }
-
 extension PaymentModeLabel on PaymentMode {
   String get label => switch (this) {
     PaymentMode.upi => 'UPI',
@@ -30,7 +29,6 @@ extension PaymentModeLabel on PaymentMode {
     PaymentMode.bankTransfer => 'Bank Transfer',
   };
 }
-
 extension PaymentStatusLabel on PaymentStatus {
   String get label => switch (this) {
     PaymentStatus.pending => 'Pending',
@@ -489,4 +487,104 @@ class DashboardStats {
   final double totalConcessions;
   final int defaulters;
   final double collectionRate;
+}
+
+enum ReminderChannel { whatsapp, sms }
+
+enum ReminderTemplateType { dueReminder, defaulterWarning, receiptConfirmation, custom }
+
+enum InstallmentStatus { pending, paid, overdue }
+
+extension ReminderChannelLabel on ReminderChannel {
+  String get label => switch (this) {
+    ReminderChannel.whatsapp => 'WhatsApp',
+    ReminderChannel.sms => 'SMS',
+  };
+}
+
+extension ReminderTemplateTypeLabel on ReminderTemplateType {
+  String get label => switch (this) {
+    ReminderTemplateType.dueReminder => 'Due Date Reminder',
+    ReminderTemplateType.defaulterWarning => 'Defaulter Warning',
+    ReminderTemplateType.receiptConfirmation => 'Receipt Confirmation',
+    ReminderTemplateType.custom => 'Custom Note',
+  };
+}
+
+extension InstallmentStatusLabel on InstallmentStatus {
+  String get label => switch (this) {
+    InstallmentStatus.pending => 'Pending',
+    InstallmentStatus.paid => 'Paid',
+    InstallmentStatus.overdue => 'Overdue',
+  };
+}
+
+class ReminderLog {
+  const ReminderLog({
+    required this.id,
+    required this.studentId,
+    required this.guardianPhone,
+    required this.channel,
+    required this.templateType,
+    required this.message,
+    required this.sentAt,
+    this.status = 'sent',
+  });
+
+  final String id;
+  final String studentId;
+  final String guardianPhone;
+  final ReminderChannel channel;
+  final ReminderTemplateType templateType;
+  final String message;
+  final DateTime sentAt;
+  final String status;
+}
+
+class FeeInstallment {
+  const FeeInstallment({
+    required this.id,
+    required this.studentId,
+    required this.feeDemandId,
+    required this.installmentNo,
+    required this.totalInstallments,
+    required this.title,
+    required this.amount,
+    required this.dueDate,
+    required this.status,
+    this.paidAmount = 0.0,
+    this.paidAt,
+  });
+
+  final String id;
+  final String studentId;
+  final String feeDemandId;
+  final int installmentNo;
+  final int totalInstallments;
+  final String title;
+  final double amount;
+  final DateTime dueDate;
+  final InstallmentStatus status;
+  final double paidAmount;
+  final DateTime? paidAt;
+
+  FeeInstallment copyWith({
+    InstallmentStatus? status,
+    double? paidAmount,
+    DateTime? paidAt,
+  }) {
+    return FeeInstallment(
+      id: id,
+      studentId: studentId,
+      feeDemandId: feeDemandId,
+      installmentNo: installmentNo,
+      totalInstallments: totalInstallments,
+      title: title,
+      amount: amount,
+      dueDate: dueDate,
+      status: status ?? this.status,
+      paidAmount: paidAmount ?? this.paidAmount,
+      paidAt: paidAt ?? this.paidAt,
+    );
+  }
 }
